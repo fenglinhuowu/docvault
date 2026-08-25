@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/v2",
+  "productName": "DocVault",
+  "version": "0.1.0",
+  "identifier": "com.docvault.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "DocVault",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [],
+    "externalBin": [],
+    "copyright": "Copyright 2026 DocVault",
+    "category": "Productivity",
+    "shortDescription": "Offline document management tool",
+    "longDescription": "DocVault is an offline, cross-platform document management, editing and conversion software."
+  }
+}
