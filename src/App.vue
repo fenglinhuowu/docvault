@@ -183,7 +183,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { platform as detectPlatform } from '@tauri-apps/plugin-os'
-import { useDocVault } from '../composables/useDocVault'
+import { useDocVault } from './composables/useDocVault'
 
 const { state, openFile, saveFile, convertToPdf, scanDir, formatSize, getFileIcon } = useDocVault()
 
