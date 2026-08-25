@@ -1,4 +1,4 @@
-import { ref, reactive, shallowRef } from 'vue'
+import { reactive, shallowRef } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { renderAsync } from 'docx-preview'
@@ -130,7 +130,7 @@ async function parseFileContent(fileData: FileData) {
         ignoreHeight: false,
         ignoreFonts: false,
         breakPages: true,
-        ignoreLastRenderedPage: false,
+        ignoreLastRenderedPageBreak: false,
         experimental: true,
         trimXmlDeclaration: true,
         renderHeaders: true,

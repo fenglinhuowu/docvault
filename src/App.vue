@@ -85,7 +85,7 @@
           <div v-else-if="parsedContent.type === 'html'" class="word-editor">
             <div class="editor-toolbar">
               <!-- 字体选择 -->
-              <select class="toolbar-select" @change="setFontFamily($event.target.value)" :value="currentFontFamily">
+              <select class="toolbar-select" @change="setFontFamily(($event.target as HTMLSelectElement).value)" :value="currentFontFamily">
                 <option value="">字体</option>
                 <option value="SimSun">宋体</option>
                 <option value="SimHei">黑体</option>
@@ -95,7 +95,7 @@
                 <option value="Times New Roman">Times New Roman</option>
               </select>
               <!-- 字号选择 -->
-              <select class="toolbar-select" @change="setFontSize($event.target.value)" :value="currentFontSize">
+              <select class="toolbar-select" @change="setFontSize(($event.target as HTMLSelectElement).value)" :value="currentFontSize">
                 <option value="">字号</option>
                 <option value="12">小五</option>
                 <option value="14">五号</option>
@@ -107,7 +107,7 @@
               </select>
               <span class="separator">|</span>
               <!-- 标题格式 -->
-              <select class="toolbar-select" @change="setHeading($event.target.value)" :value="currentHeading">
+              <select class="toolbar-select" @change="setHeading(($event.target as HTMLSelectElement).value)" :value="currentHeading">
                 <option value="">正文</option>
                 <option value="1">标题 1</option>
                 <option value="2">标题 2</option>
@@ -115,27 +115,27 @@
               </select>
               <span class="separator">|</span>
               <!-- 文字格式 -->
-              <button class="btn btn-small" @click="editor.chain().focus().toggleBold().run()" :class="{ active: editor?.isActive('bold') }" title="加粗"><b>B</b></button>
-              <button class="btn btn-small" @click="editor.chain().focus().toggleItalic().run()" :class="{ active: editor?.isActive('italic') }" title="斜体"><i>I</i></button>
-              <button class="btn btn-small" @click="editor.chain().focus().toggleUnderline().run()" :class="{ active: editor?.isActive('underline') }" title="下划线"><u>U</u></button>
-              <button class="btn btn-small" @click="editor.chain().focus().toggleStrike().run()" :class="{ active: editor?.isActive('strike') }" title="删除线"><s>S</s></button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleBold().run()" :class="{ active: editor?.isActive('bold') }" title="加粗"><b>B</b></button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleItalic().run()" :class="{ active: editor?.isActive('italic') }" title="斜体"><i>I</i></button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleUnderline().run()" :class="{ active: editor?.isActive('underline') }" title="下划线"><u>U</u></button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleStrike().run()" :class="{ active: editor?.isActive('strike') }" title="删除线"><s>S</s></button>
               <span class="separator">|</span>
               <!-- 颜色 -->
-              <input type="color" class="toolbar-color" @input="setTextColor($event.target.value)" title="文字颜色" />
-              <input type="color" class="toolbar-color" @input="setHighlightColor($event.target.value)" title="高亮颜色" />
+              <input type="color" class="toolbar-color" @input="setTextColor($event)" title="文字颜色" />
+              <input type="color" class="toolbar-color" @input="setHighlightColor($event)" title="高亮颜色" />
               <span class="separator">|</span>
               <!-- 对齐 -->
-              <button class="btn btn-small" @click="editor.chain().focus().setTextAlign('left').run()" :class="{ active: editor?.isActive({ textAlign: 'left' }) }" title="左对齐">⬅</button>
-              <button class="btn btn-small" @click="editor.chain().focus().setTextAlign('center').run()" :class="{ active: editor?.isActive({ textAlign: 'center' }) }" title="居中">↔</button>
-              <button class="btn btn-small" @click="editor.chain().focus().setTextAlign('right').run()" :class="{ active: editor?.isActive({ textAlign: 'right' }) }" title="右对齐">➡</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().setTextAlign('left').run()" :class="{ active: editor?.isActive({ textAlign: 'left' }) }" title="左对齐">⬅</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().setTextAlign('center').run()" :class="{ active: editor?.isActive({ textAlign: 'center' }) }" title="居中">↔</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().setTextAlign('right').run()" :class="{ active: editor?.isActive({ textAlign: 'right' }) }" title="右对齐">➡</button>
               <span class="separator">|</span>
               <!-- 列表 -->
-              <button class="btn btn-small" @click="editor.chain().focus().toggleBulletList().run()" :class="{ active: editor?.isActive('bulletList') }" title="无序列表">•</button>
-              <button class="btn btn-small" @click="editor.chain().focus().toggleOrderedList().run()" :class="{ active: editor?.isActive('orderedList') }" title="有序列表">1.</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleBulletList().run()" :class="{ active: editor?.isActive('bulletList') }" title="无序列表">•</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleOrderedList().run()" :class="{ active: editor?.isActive('orderedList') }" title="有序列表">1.</button>
               <span class="separator">|</span>
               <!-- 撤销重做 -->
-              <button class="btn btn-small" @click="editor.chain().focus().undo().run()" title="撤销">↩</button>
-              <button class="btn btn-small" @click="editor.chain().focus().redo().run()" title="重做">↪</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().undo().run()" title="撤销">↩</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().redo().run()" title="重做">↪</button>
               <span class="separator">|</span>
               <!-- 插入 -->
               <button class="btn btn-small" @click="insertImage" title="插入图片">🖼</button>
@@ -152,7 +152,7 @@
               <table class="data-table">
                 <tbody>
                   <tr v-for="(row, rowIndex) in parsedContent.rows" :key="rowIndex">
-                    <td v-for="(cell, cellIndex) in row" :key="cellIndex" class="cell">
+                    <td v-for="(_cell, cellIndex) in row" :key="cellIndex" class="cell">
                       <input v-model="parsedContent.rows![rowIndex][cellIndex]" class="cell-input" />
                     </td>
                   </tr>
@@ -205,7 +205,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useDocVault } from './composables/useDocVault'
 
@@ -214,17 +214,17 @@ import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
-import TextStyle from '@tiptap/extension-text-style'
-import Color from '@tiptap/extension-color'
+import { TextStyle } from '@tiptap/extension-text-style'
+import { Color } from '@tiptap/extension-color'
 import Highlight from '@tiptap/extension-highlight'
 import Image from '@tiptap/extension-image'
-import Table from '@tiptap/extension-table'
+import { Table } from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableCell from '@tiptap/extension-table-cell'
 import TableHeader from '@tiptap/extension-table-header'
 import FontFamily from '@tiptap/extension-font-family'
 
-const { state, parsedContent, openFile, saveFile, convertToPdf, scanDir, formatSize, getFileIcon } = useDocVault()
+const { state, parsedContent, openFile, saveFile, convertToPdf, formatSize, getFileIcon } = useDocVault()
 
 const textContent = ref('')
 const pdfBlobUrl = ref<string>('')
@@ -293,12 +293,14 @@ function setHeading(level: string) {
   }
 }
 
-function setTextColor(color: string) {
-  editor.value?.chain().focus().setColor(color).run()
+function setTextColor(event: Event) {
+  const target = event.target as HTMLInputElement
+  editor.value?.chain().focus().setColor(target.value).run()
 }
 
-function setHighlightColor(color: string) {
-  editor.value?.chain().focus().toggleHighlight({ color }).run()
+function setHighlightColor(event: Event) {
+  const target = event.target as HTMLInputElement
+  editor.value?.chain().focus().toggleHighlight({ color: target.value }).run()
 }
 
 function insertImage() {
