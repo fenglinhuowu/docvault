@@ -257,8 +257,9 @@ const editor = useEditor({
   },
   onSelectionUpdate: ({ editor }) => {
     // 更新当前格式状态
-    currentFontFamily.value = editor.getAttributes('textStyle').fontFamily || ''
-    currentFontSize.value = editor.getAttributes('textStyle').fontSize || ''
+    const styleAttrs = editor.getAttributes('textStyle')
+    currentFontFamily.value = styleAttrs.fontFamily || ''
+    currentFontSize.value = styleAttrs.fontSize ? String(styleAttrs.fontSize).replace('px', '') : ''
     currentHeading.value = editor.isActive('heading') ? String(editor.getAttributes('heading').level) : ''
   },
 })
@@ -276,9 +277,10 @@ function setFontFamily(font: string) {
 function setFontSize(size: string) {
   currentFontSize.value = size
   if (size) {
-    editor.value?.chain().focus().setFontSize(size + 'px').run()
+    const attrs = editor.value?.getAttributes('textStyle') || {}
+    editor.value?.chain().focus().setMark('textStyle', { ...attrs, fontSize: size + 'px' }).run()
   } else {
-    editor.value?.chain().focus().unsetFontSize().run()
+    editor.value?.chain().focus().unsetMark('textStyle').run()
   }
 }
 
