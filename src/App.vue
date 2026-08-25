@@ -255,6 +255,9 @@ const currentHeading = ref('')
 // 编辑模式
 const isEditing = ref(false)
 
+// 防止循环更新的标志（必须在 useEditor 之前定义）
+let isUpdatingFromWatch = false
+
 // TipTap 编辑器实例
 const editor = useEditor({
   extensions: [
@@ -351,9 +354,6 @@ function stopEditing() {
     parsedContent.value = { type: 'html', content: editor.value.getHTML() }
   }
 }
-
-// 防止循环更新的标志
-let isUpdatingFromWatch = false
 
 // 监听 Word 内容变化，同步到编辑器
 watch(

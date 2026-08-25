@@ -143,13 +143,14 @@ async function parseFileContent(fileData: FileData) {
         renderChanges: false,
       })
 
-      // 获取渲染后的 HTML
+      // 获取渲染后的 HTML 和样式
       const html = container.innerHTML
+      const styles = styleContainer.innerHTML
       document.body.removeChild(container)
       document.body.removeChild(styleContainer)
 
-      // 存储为非响应式数据
-      parsedContent.value = { type: 'html', content: html }
+      // 存储 HTML 和样式
+      parsedContent.value = { type: 'html', content: styles + html }
     } catch (err) {
       console.error('Docx render error:', err)
       parsedContent.value = {
