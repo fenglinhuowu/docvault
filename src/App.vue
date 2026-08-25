@@ -93,8 +93,13 @@
             </div>
           </div>
 
-          <!-- Word 编辑区 -->
-          <div v-if="isWordFile" class="word-editor">
+          <!-- 文本文件显示 -->
+          <div v-if="parsedContent.type === 'text'" class="text-viewer">
+            <pre class="text-content">{{ parsedContent.content }}</pre>
+          </div>
+
+          <!-- Word 文档显示 -->
+          <div v-else-if="parsedContent.type === 'html'" class="word-editor">
             <div class="editor-toolbar">
               <button class="btn btn-small" @click="execCmd('bold')"><b>B</b></button>
               <button class="btn btn-small" @click="execCmd('italic')"><i>I</i></button>
@@ -102,33 +107,43 @@
               <span class="separator">|</span>
               <button class="btn btn-small" @click="execCmd('justifyLeft')">⬅</button>
               <button class="btn btn-small" @click="execCmd('justifyCenter')">↔</button>
-              <button class="btn btn-small" @click="execCmd='justifyRight'">➡</button>
-              <span class="separator">|</span>
-              <button class="btn btn-small" @click="execCmd('insertUnorderedList')">• 列表</button>
+              <button class="btn btn-small" @click="execCmd('justifyRight')">➡</button>
             </div>
             <div
               ref="editorRef"
               class="editor-content"
               contenteditable="true"
               @input="onEditorInput"
-              v-html="wordContent"
+              v-html="parsedContent.content"
             ></div>
           </div>
 
-          <!-- Excel 编辑区 -->
-          <div v-else-if="isExcelFile" class="excel-editor">
-            <div id="luckysheet-container" class="spreadsheet-container"></div>
-            <div class="placeholder">
-              <p>📊 Excel 编辑组件</p>
-              <p>集成 Luckysheet/FortuneSheet 进行表格编辑</p>
-              <pre>{{ state.currentFile.content_base64.substring(0, 100) }}...</pre>
+          <!-- Excel 表格显示 -->
+          <div v-else-if="parsedContent.type === 'spreadsheet'" class="excel-viewer">
+            <div v-if="parsedContent.rows && parsedContent.rows.length > 0" class="spreadsheet">
+              <table class="data-table">
+                <tbody>
+                  <tr v-for="(row, rowIndex) in parsedContent.rows" :key="rowIndex">
+                    <td
+                      v-for="(cell, cellIndex) in row"
+                      :key="cellIndex"
+                      class="cell"
+                    >
+                      {{ cell }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="placeholder">
+              <p>无法解析表格数据</p>
             </div>
           </div>
 
           <!-- PDF 预览区 -->
-          <div v-else-if="isPdfFile" class="pdf-viewer">
+          <div v-else-if="parsedContent.type === 'pdf'" class="pdf-viewer">
             <iframe
-              :src="pdfUrl"
+              :src="pdfBlobUrl"
               class="pdf-frame"
               title="PDF Viewer"
             ></iframe>
@@ -136,7 +151,7 @@
 
           <!-- 其他格式 -->
           <div v-else class="unsupported">
-            <p>暂不支持该格式的在线编辑</p>
+            <p>暂不支持该格式的预览</p>
             <p>文件已加载，可尝试"Word转PDF"功能</p>
           </div>
         </div>
@@ -148,9 +163,10 @@
             <h3>欢迎使用 DocVault</h3>
             <p>完全离线、跨平台的文档管理解决方案</p>
             <ul class="feature-list">
-              <li>📝 Word 文档编辑与转换</li>
-              <li>📊 Excel 表格处理</li>
-              <li>📕 PDF 查看与生成</li>
+              <li>📝 Word 文档查看</li>
+              <li>📊 Excel 表格查看</li>
+              <li>📕 PDF 查看</li>
+              <li>📝 文本文件编辑</li>
               <li>🔒 完全离线，数据安全</li>
             </ul>
             <button class="btn btn-primary btn-large" @click="openFile">
@@ -180,16 +196,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { platform as detectPlatform } from '@tauri-apps/plugin-os'
 import { useDocVault } from './composables/useDocVault'
 
-const { state, openFile, saveFile, convertToPdf, scanDir, formatSize, getFileIcon } = useDocVault()
+const { state, parsedContent, openFile, saveFile, convertToPdf, scanDir, formatSize, getFileIcon } = useDocVault()
 
 const editorRef = ref<HTMLDivElement | null>(null)
-const wordContent = ref('<p>打开 Word 文档开始编辑...</p>')
+const pdfBlobUrl = ref<string>('')
 const platform = ref('unknown')
+
+const getDefaultDir = ''
 
 // 计算属性
 const isWordFile = computed(() =>
@@ -201,12 +219,24 @@ const isExcelFile = computed(() =>
 const isPdfFile = computed(() =>
   state.currentFile?.extension === 'pdf'
 )
-const pdfUrl = computed(() => {
-  if (!state.currentFile || !isPdfFile.value) return ''
-  return `data:application/pdf;base64,${state.currentFile.content_base64}`
-})
 
-const getDefaultDir = ''
+// 监听 PDF 内容变化，创建 blob URL
+watch(
+  () => parsedContent.value,
+  (content) => {
+    if (content.type === 'pdf' && content.content) {
+      // 创建 Blob URL
+      const binaryString = atob(content.content)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      pdfBlobUrl.value = url
+    }
+  }
+)
 
 // 方法
 async function openFileByPath(path: string) {
@@ -214,11 +244,6 @@ async function openFileByPath(path: string) {
     state.loading = true
     const fileData = await invoke<FileData>('open_local_file', { path })
     state.currentFile = fileData
-
-    if (isWordFile.value && fileData.extension === 'docx') {
-      // 简单解析 docx 内容显示
-      wordContent.value = '<p>Word 文档已加载，点击编辑...</p>'
-    }
   } catch (err) {
     state.error = `打开失败: ${err}`
   } finally {
@@ -232,12 +257,23 @@ function execCmd(command: string, value?: string) {
 
 function onEditorInput() {
   if (editorRef.value) {
-    wordContent.value = editorRef.value.innerHTML
+    parsedContent.value.content = editorRef.value.innerHTML
   }
 }
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString('zh-CN')
+}
+
+interface FileData {
+  path: string
+  name: string
+  size: number
+  mime_type: string
+  extension: string
+  content_base64: string
+  modified: string | null
+  created: string | null
 }
 
 onMounted(async () => {
@@ -488,6 +524,25 @@ onMounted(async () => {
   color: #6b7280;
 }
 
+/* 文本文件查看器 */
+.text-viewer {
+  flex: 1;
+  overflow: auto;
+  background: #fafafa;
+}
+
+.text-content {
+  padding: 24px;
+  margin: 0;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Word 编辑器 */
 .word-editor {
   flex: 1;
   display: flex;
@@ -512,21 +567,51 @@ onMounted(async () => {
   flex: 1;
   padding: 40px;
   max-width: 800px;
+  width: 100%;
   margin: 0 auto;
   outline: none;
   line-height: 1.8;
   color: #374151;
+  overflow-y: auto;
 }
 
-.excel-editor,
+/* Excel 查看器 */
+.excel-viewer {
+  flex: 1;
+  overflow: auto;
+  background: white;
+}
+
+.spreadsheet {
+  padding: 16px;
+}
+
+.data-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.data-table td {
+  border: 1px solid #e5e7eb;
+  padding: 6px 12px;
+  text-align: left;
+  min-width: 80px;
+}
+
+.data-table tr:first-child td {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.data-table tr:hover td {
+  background: #f9fafb;
+}
+
+/* PDF 查看器 */
 .pdf-viewer {
   flex: 1;
   position: relative;
-}
-
-.spreadsheet-container {
-  width: 100%;
-  height: 100%;
 }
 
 .pdf-frame {
