@@ -619,6 +619,14 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+.view-mode,
+.edit-mode {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .editor-toolbar {
   display: flex;
   gap: 4px;
