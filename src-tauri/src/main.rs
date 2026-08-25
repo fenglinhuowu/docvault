@@ -43,6 +43,7 @@ pub struct ConvertResult {
 pub mod commands {
     use super::*;
     use base64::Engine;
+    use calamine::Reader;
 
     /// 完全离线读取本地文件，返回 Base64 编码的内容
     #[tauri::command]
@@ -106,6 +107,92 @@ pub mod commands {
             modified,
             created,
         })
+    }
+
+    /// 解析 Word 文档内容（返回 HTML）
+    #[tauri::command]
+    pub async fn parse_docx(path: String) -> Result<String, String> {
+        let path = validate_path(&path)?;
+
+        if !path.exists() {
+            return Err(format!("File not found: {}", path.display()));
+        }
+
+        let content = fs::read(&path).map_err(|e| e.to_string())?;
+
+        // 使用 docx-rs 解析
+        match docx_rs::read_docx(&content) {
+            Ok(docx) => {
+                let mut html = String::new();
+                html.push_str("<div class=\"docx-content\">");
+
+                for child in &docx.document.children {
+                    match child {
+                        docx_rs::DocumentChild::Paragraph(p) => {
+                            html.push_str("<p>");
+                            for para_child in &p.children {
+                                if let docx_rs::ParagraphChild::Run(run) = para_child {
+                                    for run_child in &run.children {
+                                        if let docx_rs::RunChild::Text(text) = run_child {
+                                            html.push_str(&text.text);
+                                        }
+                                    }
+                                }
+                            }
+                            html.push_str("</p>");
+                        }
+                        _ => {}
+                    }
+                }
+
+                html.push_str("</div>");
+                Ok(html)
+            }
+            Err(e) => Err(format!("Failed to parse docx: {}", e)),
+        }
+    }
+
+    /// 解析 Excel 表格内容（返回 JSON）
+    #[tauri::command]
+    pub async fn parse_xlsx(path: String) -> Result<Vec<Vec<String>>, String> {
+        let path = validate_path(&path)?;
+
+        if !path.exists() {
+            return Err(format!("File not found: {}", path.display()));
+        }
+
+        // 根据扩展名选择解析方式
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        let mut all_rows: Vec<Vec<String>> = Vec::new();
+
+        if ext == "xlsx" || ext == "xlsm" {
+            // 使用 calamine 读取 xlsx
+            let mut workbook: calamine::Xlsx<_> = calamine::open_workbook(&path)
+                .map_err(|e| format!("Failed to open xlsx: {:?}", e))?;
+
+            let sheet_names = workbook.sheet_names();
+            if !sheet_names.is_empty() {
+                if let Ok(range) = workbook.worksheet_range(&sheet_names[0]) {
+                    for row in range.rows() {
+                        let row_data: Vec<String> = row
+                            .iter()
+                            .map(|cell| cell.to_string())
+                            .collect();
+                        all_rows.push(row_data);
+                    }
+                }
+            }
+        } else {
+            // 尝试其他格式
+            return Err(format!("Unsupported format: {}", ext));
+        }
+
+        Ok(all_rows)
     }
 
     /// 将内容写入本地文件
@@ -383,6 +470,8 @@ fn main() {
             commands::convert_docx_to_pdf,
             commands::scan_directory,
             commands::get_file_info,
+            commands::parse_docx,
+            commands::parse_xlsx,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DocVault application");
