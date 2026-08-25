@@ -128,16 +128,14 @@
           <!-- PDF 预览 -->
           <div v-else-if="parsedContent.type === 'pdf'" class="pdf-viewer">
             <div class="pdf-toolbar">
-              <button class="btn btn-small" @click="pdfZoomOut">➖</button>
-              <span class="pdf-zoom">{{ Math.round(pdfZoom * 100) }}%</span>
-              <button class="btn btn-small" @click="pdfZoomIn">➕</button>
-              <span class="separator">|</span>
-              <button class="btn btn-small" @click="pdfPrevPage" :disabled="pdfPage <= 1">◀</button>
-              <span class="pdf-page">{{ pdfPage }} / {{ pdfTotalPages }}</span>
-              <button class="btn btn-small" @click="pdfNextPage" :disabled="pdfPage >= pdfTotalPages">▶</button>
+              <span class="pdf-info">PDF 文档</span>
             </div>
             <div class="pdf-scroll-area">
-              <canvas ref="pdfCanvas" class="pdf-canvas"></canvas>
+              <iframe
+                :src="pdfBlobUrl"
+                class="pdf-frame"
+                title="PDF Viewer"
+              ></iframe>
             </div>
           </div>
 
@@ -171,100 +169,32 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useDocVault } from './composables/useDocVault'
-import * as pdfjsLib from 'pdfjs-dist'
-
-// PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString()
 
 const { state, parsedContent, openFile, saveFile, convertToPdf, scanDir, formatSize, getFileIcon } = useDocVault()
 
 const editorRef = ref<HTMLDivElement | null>(null)
 const textContent = ref('')
-const pdfCanvas = ref<HTMLCanvasElement | null>(null)
-const pdfDoc = ref<any>(null)
-const pdfPage = ref(1)
-const pdfTotalPages = ref(0)
-const pdfZoom = ref(1.0)
+const pdfBlobUrl = ref<string>('')
 
-// PDF 渲染
+// 监听 PDF 内容变化，创建 blob URL
 watch(
   () => parsedContent.value,
-  async (content) => {
+  (content) => {
     if (content.type === 'pdf' && content.content) {
-      await nextTick()
-      await loadPdf(content.content)
+      // 创建 Blob URL
+      const binaryString = atob(content.content)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' })
+      pdfBlobUrl.value = URL.createObjectURL(blob)
     }
   }
 )
-
-async function loadPdf(base64: string) {
-  try {
-    const binaryString = atob(base64)
-    const bytes = new Uint8Array(binaryString.length)
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i)
-    }
-
-    const loadingTask = pdfjsLib.getDocument({ data: bytes })
-    pdfDoc.value = await loadingTask.promise
-    pdfTotalPages.value = pdfDoc.value.numPages
-    pdfPage.value = 1
-    await renderPdfPage()
-  } catch (err) {
-    console.error('PDF load error:', err)
-  }
-}
-
-async function renderPdfPage() {
-  if (!pdfDoc.value || !pdfCanvas.value) return
-
-  try {
-    const page = await pdfDoc.value.getPage(pdfPage.value)
-    const viewport = page.getViewport({ scale: pdfZoom.value })
-    const canvas = pdfCanvas.value
-    const context = canvas.getContext('2d')!
-
-    canvas.height = viewport.height
-    canvas.width = viewport.width
-
-    await page.render({
-      canvasContext: context,
-      viewport: viewport,
-    }).promise
-  } catch (err) {
-    console.error('PDF render error:', err)
-  }
-}
-
-function pdfZoomIn() {
-  pdfZoom.value = Math.min(pdfZoom.value + 0.25, 3.0)
-  renderPdfPage()
-}
-
-function pdfZoomOut() {
-  pdfZoom.value = Math.max(pdfZoom.value - 0.25, 0.5)
-  renderPdfPage()
-}
-
-function pdfPrevPage() {
-  if (pdfPage.value > 1) {
-    pdfPage.value--
-    renderPdfPage()
-  }
-}
-
-function pdfNextPage() {
-  if (pdfPage.value < pdfTotalPages.value) {
-    pdfPage.value++
-    renderPdfPage()
-  }
-}
 
 // 方法
 async function openFileByPath(path: string) {
@@ -577,10 +507,9 @@ onMounted(async () => {})
   flex-shrink: 0;
 }
 
-.pdf-zoom, .pdf-page {
+.pdf-info {
   font-size: 12px;
-  min-width: 60px;
-  text-align: center;
+  opacity: 0.8;
 }
 
 .pdf-scroll-area {
@@ -588,11 +517,14 @@ onMounted(async () => {})
   overflow: auto;
   display: flex;
   justify-content: center;
-  padding: 24px;
+  padding: 0;
 }
 
-.pdf-canvas {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+.pdf-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
 }
 
 .unsupported {

@@ -110,10 +110,31 @@ async function parseFileContent(fileData: FileData) {
     // 使用 mammoth.js 解析 docx（保留格式）
     try {
       const arrayBuffer = base64ToArrayBuffer(fileData.content_base64)
-      const result = await mammoth.convertToHtml({ arrayBuffer })
+      const result = await mammoth.convertToHtml(
+        { arrayBuffer },
+        {
+          styleMap: [
+            "p[style-name='Heading 1'] => h1:fresh",
+            "p[style-name='Heading 2'] => h2:fresh",
+            "p[style-name='Heading 3'] => h3:fresh",
+            "b => b",
+            "i => i",
+            "u => u",
+          ],
+        }
+      )
       parsedContent.value = { type: 'html', content: result.value }
-    } catch {
-      parsedContent.value = { type: 'html', content: '<p style="color:red">文档解析失败</p>' }
+
+      // 显示警告信息（如果有）
+      if (result.messages.length > 0) {
+        console.warn('Mammoth warnings:', result.messages)
+      }
+    } catch (err) {
+      console.error('Docx parse error:', err)
+      parsedContent.value = {
+        type: 'html',
+        content: `<p style="color:red">文档解析失败: ${err}</p>`,
+      }
     }
   } else if (ext === 'xlsx' || ext === 'xls') {
     // 调用 Rust 端解析 xlsx
