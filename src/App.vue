@@ -84,27 +84,13 @@
           <!-- Word 文档 -->
           <div v-else-if="parsedContent.type === 'html'" class="word-editor">
             <div class="editor-toolbar">
-              <button class="btn btn-small" @click="formatBlock('bold')" title="加粗"><b>B</b></button>
-              <button class="btn btn-small" @click="formatBlock('italic')" title="斜体"><i>I</i></button>
-              <button class="btn btn-small" @click="formatBlock('underline')" title="下划线"><u>U</u></button>
-              <button class="btn btn-small" @click="formatBlock('strikeThrough')" title="删除线"><s>S</s></button>
+              <button class="btn btn-small" disabled title="只读预览">👁 预览模式</button>
               <span class="separator">|</span>
-              <button class="btn btn-small" @click="formatBlock('justifyLeft')" title="左对齐">⬅</button>
-              <button class="btn btn-small" @click="formatBlock('justifyCenter')" title="居中">↔</button>
-              <button class="btn btn-small" @click="formatBlock('justifyRight')" title="右对齐">➡</button>
-              <span class="separator">|</span>
-              <button class="btn btn-small" @click="formatBlock('insertUnorderedList')" title="无序列表">• 列表</button>
-              <button class="btn btn-small" @click="formatBlock('insertOrderedList')" title="有序列表">1. 列表</button>
-              <span class="separator">|</span>
-              <button class="btn btn-small" @click="formatBlock('undo')" title="撤销">↩</button>
-              <button class="btn btn-small" @click="formatBlock('redo')" title="重做">↪</button>
+              <span class="toolbar-hint">Word 文档渲染预览（docx-preview）</span>
             </div>
             <div class="editor-scroll-area">
               <div
-                ref="editorRef"
-                class="editor-content"
-                contenteditable="true"
-                @input="onEditorInput"
+                class="editor-content docx-preview-content"
                 v-html="parsedContent.content"
               ></div>
             </div>
@@ -175,7 +161,6 @@ import { useDocVault } from './composables/useDocVault'
 
 const { state, parsedContent, openFile, saveFile, convertToPdf, scanDir, formatSize, getFileIcon } = useDocVault()
 
-const editorRef = ref<HTMLDivElement | null>(null)
 const textContent = ref('')
 const pdfBlobUrl = ref<string>('')
 
@@ -206,16 +191,6 @@ async function openFileByPath(path: string) {
     state.error = `打开失败: ${err}`
   } finally {
     state.loading = false
-  }
-}
-
-function formatBlock(command: string, value?: string) {
-  document.execCommand(command, false, value)
-}
-
-function onEditorInput() {
-  if (editorRef.value) {
-    parsedContent.value.content = editorRef.value.innerHTML
   }
 }
 
@@ -448,6 +423,34 @@ onMounted(async () => {})
   outline: none;
   line-height: 1.8;
   color: #374151;
+}
+
+/* docx-preview 渲染内容样式 */
+.docx-preview-content {
+  font-family: 'SimSun', '宋体', serif;
+  font-size: 12pt;
+  line-height: 1.5;
+}
+
+.docx-preview-content p {
+  margin: 0 0 10px 0;
+}
+
+.docx-preview-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+}
+
+.docx-preview-content table td,
+.docx-preview-content table th {
+  border: 1px solid #000;
+  padding: 5px 10px;
+}
+
+.docx-preview-content img {
+  max-width: 100%;
+  height: auto;
 }
 
 /* Excel 查看器 */

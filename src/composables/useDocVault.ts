@@ -1,7 +1,7 @@
 import { ref, reactive } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
-import mammoth from 'mammoth'
+import { renderAsync } from 'docx-preview'
 
 // ==================== 类型定义 ====================
 
@@ -107,33 +107,24 @@ async function parseFileContent(fileData: FileData) {
   } else if (ext === 'pdf') {
     parsedContent.value = { type: 'pdf', content: fileData.content_base64 }
   } else if (ext === 'docx') {
-    // 使用 mammoth.js 解析 docx（保留格式）
+    // 使用 docx-preview 渲染（完整保留格式）
     try {
       const arrayBuffer = base64ToArrayBuffer(fileData.content_base64)
-      const result = await mammoth.convertToHtml(
-        { arrayBuffer },
-        {
-          styleMap: [
-            "p[style-name='Heading 1'] => h1:fresh",
-            "p[style-name='Heading 2'] => h2:fresh",
-            "p[style-name='Heading 3'] => h3:fresh",
-            "b => b",
-            "i => i",
-            "u => u",
-          ],
-        }
-      )
-      parsedContent.value = { type: 'html', content: result.value }
+      // 创建一个临时容器来渲染
+      const container = document.createElement('div')
+      container.id = 'docx-render-container'
+      container.style.display = 'none'
+      document.body.appendChild(container)
 
-      // 显示警告信息（如果有）
-      if (result.messages.length > 0) {
-        console.warn('Mammoth warnings:', result.messages)
-      }
+      await renderAsync(arrayBuffer, container)
+      parsedContent.value = { type: 'html', content: container.innerHTML }
+
+      document.body.removeChild(container)
     } catch (err) {
-      console.error('Docx parse error:', err)
+      console.error('Docx render error:', err)
       parsedContent.value = {
         type: 'html',
-        content: `<p style="color:red">文档解析失败: ${err}</p>`,
+        content: `<p style="color:red">文档渲染失败: ${err}</p>`,
       }
     }
   } else if (ext === 'xlsx' || ext === 'xls') {
