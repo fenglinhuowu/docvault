@@ -1,4 +1,4 @@
-import { ref, reactive } from 'vue'
+import { ref, reactive, shallowRef } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { renderAsync } from 'docx-preview'
@@ -50,7 +50,7 @@ const state = reactive({
   conversionProgress: 0,
 })
 
-const parsedContent = ref<ParsedContent>({ type: 'unsupported', content: '' })
+const parsedContent = shallowRef<ParsedContent>({ type: 'unsupported', content: '' })
 
 // ==================== 核心功能 ====================
 
@@ -110,16 +110,42 @@ async function parseFileContent(fileData: FileData) {
     // 使用 docx-preview 渲染（完整保留格式）
     try {
       const arrayBuffer = base64ToArrayBuffer(fileData.content_base64)
-      // 创建一个临时容器来渲染
+
+      // 检查文件大小，超过 5MB 警告
+      if (arrayBuffer.byteLength > 5 * 1024 * 1024) {
+        console.warn(`Large document: ${arrayBuffer.byteLength} bytes`)
+      }
+
       const container = document.createElement('div')
       container.id = 'docx-render-container'
-      container.style.display = 'none'
+      container.style.position = 'absolute'
+      container.style.left = '-9999px'
+      container.style.top = '-9999px'
       document.body.appendChild(container)
 
-      await renderAsync(arrayBuffer, container)
-      parsedContent.value = { type: 'html', content: container.innerHTML }
+      await renderAsync(arrayBuffer, container, container, {
+        className: 'docx',
+        inWrapper: true,
+        ignoreWidth: false,
+        ignoreHeight: false,
+        ignoreFonts: false,
+        breakPages: true,
+        ignoreLastRenderedPage: false,
+        experimental: true,
+        trimXmlDeclaration: true,
+        renderHeaders: true,
+        renderFooters: true,
+        renderFootnotes: true,
+        renderEndnotes: true,
+        renderChanges: false,
+      })
 
+      // 获取渲染后的 HTML
+      const html = container.innerHTML
       document.body.removeChild(container)
+
+      // 存储为非响应式数据
+      parsedContent.value = { type: 'html', content: html }
     } catch (err) {
       console.error('Docx render error:', err)
       parsedContent.value = {

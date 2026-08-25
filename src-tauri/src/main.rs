@@ -388,7 +388,9 @@ pub mod commands {
         docx_path: &Path,
         pdf_path: &Path,
     ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
-        use printpdf::*;
+        use genpdf::elements::Paragraph;
+        use genpdf::fonts::{self, FontFamily};
+        use genpdf::Document;
         use std::io::BufWriter;
 
         // 读取 docx 文件
@@ -398,50 +400,68 @@ pub mod commands {
         let paragraphs = extract_docx_text(&docx_data)
             .unwrap_or_else(|_| vec!["(无法解析文档内容)".to_string()]);
 
-        // 生成 PDF
-        let (doc_pdf, page1, layer1) =
-            PdfDocument::new("Converted Document", Mm(210.0), Mm(297.0), "Layer 1");
+        // 查找中文字体文件
+        let font_path = find_chinese_font_path()?;
+        let font_dir = font_path.parent().ok_or("Invalid font path")?;
+        let font_name = font_path.file_stem()
+            .ok_or("Invalid font name")?
+            .to_str()
+            .ok_or("Invalid font name")?;
 
-        let current_layer = doc_pdf.get_page(page1).get_layer(layer1);
+        // 加载字体
+        let font_family: FontFamily<fonts::FontData> = fonts::from_files(font_dir, font_name, None)
+            .map_err(|e| format!("Failed to load font: {:?}", e))?;
 
-        // 加载支持中文的系统字体
-        let font_data = load_chinese_font()?;
-        let font = doc_pdf.add_external_font(font_data.as_slice())?;
-
-        let mut y_position = Mm(270.0);
-        let line_height = Mm(7.0);
-        let margin_left = Mm(20.0);
+        // 创建 PDF 文档
+        let mut doc = Document::new(font_family);
+        doc.set_title("Converted Document");
+        doc.set_paper_size(genpdf::PaperSize::A4);
+        doc.set_font_size(12);
 
         for text in &paragraphs {
-            if y_position < Mm(20.0) {
-                let (new_page, new_layer) = doc_pdf.add_page(Mm(210.0), Mm(297.0), "New Page");
-                let layer = doc_pdf.get_page(new_page).get_layer(new_layer);
-                y_position = Mm(270.0);
-
-                let wrapped = wrap_text(text, 40);
-                for line in wrapped {
-                    layer.use_text(line, 12.0, margin_left, y_position, &font);
-                    y_position -= line_height;
-                }
-            } else {
-                let wrapped = wrap_text(text, 40);
-                for line in wrapped {
-                    current_layer.use_text(line, 12.0, margin_left, y_position, &font);
-                    y_position -= line_height;
-                }
-            }
-            y_position -= line_height;
+            doc.push(Paragraph::new(text));
         }
 
-        let file = std::fs::File::create(pdf_path)?;
-        let mut buf_writer = BufWriter::new(file);
-        doc_pdf.save(&mut buf_writer)?;
+        // 渲染并保存 PDF
+        let mut buf_writer = BufWriter::new(std::fs::File::create(pdf_path)?);
+        doc.render(&mut buf_writer)?;
 
         let output_size = std::fs::metadata(pdf_path)?.len();
         Ok(output_size)
     }
 
-    /// 加载支持中文的系统字体
+    /// 查找中文字体文件路径
+    fn find_chinese_font_path() -> Result<std::path::PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+        let font_paths = if cfg!(target_os = "macos") {
+            vec![
+                "/System/Library/Fonts/STHeiti Medium.ttc",
+                "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                "/System/Library/Fonts/PingFang.ttc",
+                "/System/Library/Fonts/Supplemental/Songti.ttc",
+            ]
+        } else if cfg!(target_os = "windows") {
+            vec![
+                "C:\\Windows\\Fonts\\msyh.ttc",
+                "C:\\Windows\\Fonts\\simsun.ttc",
+            ]
+        } else {
+            vec![
+                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            ]
+        };
+
+        for path in &font_paths {
+            let p = std::path::PathBuf::from(path);
+            if p.exists() {
+                return Ok(p);
+            }
+        }
+
+        Err("No Chinese font found on system".into())
+    }
+
+    /// 加载支持中文的系统字体（保留用于备用）
     fn load_chinese_font() -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         // 按优先级尝试加载系统字体
         let font_paths = if cfg!(target_os = "macos") {
@@ -450,6 +470,7 @@ pub mod commands {
                 "/System/Library/Fonts/Hiragino Sans GB.ttc",
                 "/System/Library/Fonts/PingFang.ttc",
                 "/Library/Fonts/Arial Unicode.ttf",
+                "/System/Library/Fonts/Supplemental/Songti.ttc",
             ]
         } else if cfg!(target_os = "windows") {
             vec![
@@ -462,16 +483,23 @@ pub mod commands {
                 "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
                 "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
                 "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+                "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
             ]
         };
 
         for path in &font_paths {
-            if let Ok(data) = std::fs::read(path) {
-                return Ok(data);
+            match std::fs::read(path) {
+                Ok(data) => {
+                    log::info!("Loaded font: {} ({} bytes)", path, data.len());
+                    return Ok(data);
+                }
+                Err(e) => {
+                    log::debug!("Failed to load font {}: {}", path, e);
+                }
             }
         }
 
-        Err("No Chinese font found on system".into())
+        Err("No Chinese font found on system. Please install a Chinese font.".into())
     }
 
     /// 从 docx 文件中提取文本

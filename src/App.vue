@@ -86,11 +86,12 @@
             <div class="editor-toolbar">
               <button class="btn btn-small" disabled title="只读预览">👁 预览模式</button>
               <span class="separator">|</span>
-              <span class="toolbar-hint">Word 文档渲染预览（docx-preview）</span>
+              <span class="toolbar-hint">Word 文档渲染预览</span>
             </div>
             <div class="editor-scroll-area">
               <div
                 class="editor-content docx-preview-content"
+                v-once
                 v-html="parsedContent.content"
               ></div>
             </div>

@@ -31,6 +31,8 @@ docx-rs = "0.4"
 # pdf generation
 printpdf = "0.7"
 lopdf = "0.32"
+genpdf = { version = "0.2", features = ["images"] }
+rusttype = "0.9"
 
 # xlsx parsing
 calamine = "0.25"
