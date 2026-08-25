@@ -7,25 +7,13 @@
         <span class="app-subtitle">完全离线的文档管理</span>
       </div>
       <div class="toolbar-actions">
-        <button
-          :disabled="state.loading"
-          class="btn btn-primary"
-          @click="openFile"
-        >
+        <button :disabled="state.loading" class="btn btn-primary" @click="openFile">
           📂 打开文件
         </button>
-        <button
-          :disabled="!state.currentFile || state.loading"
-          class="btn btn-success"
-          @click="saveFile"
-        >
+        <button :disabled="!state.currentFile || state.loading" class="btn btn-success" @click="saveFile">
           💾 保存
         </button>
-        <button
-          :disabled="!state.currentFile || state.loading"
-          class="btn btn-warning"
-          @click="convertToPdf"
-        >
+        <button :disabled="!state.currentFile || state.loading" class="btn btn-warning" @click="convertToPdf">
           🔄 Word转PDF
         </button>
       </div>
@@ -43,10 +31,7 @@
 
     <!-- 转换进度条 -->
     <div v-if="state.conversionProgress > 0" class="progress-bar">
-      <div
-        class="progress-fill"
-        :style="{ width: state.conversionProgress + '%' }"
-      ></div>
+      <div class="progress-fill" :style="{ width: state.conversionProgress + '%' }"></div>
     </div>
 
     <!-- 主内容区 -->
@@ -54,10 +39,7 @@
       <!-- 左侧文件列表 -->
       <aside class="sidebar">
         <div class="sidebar-header">
-          <h3>最近文件</h3>
-          <button class="btn btn-small" @click="scanDir(getDefaultDir)">
-            🔄 刷新
-          </button>
+          <h3>文件列表</h3>
         </div>
         <div class="file-list">
           <div
@@ -74,7 +56,7 @@
             </div>
           </div>
           <div v-if="state.fileList.length === 0" class="empty-state">
-            暂无文件，点击"打开文件"开始
+            点击"打开文件"开始
           </div>
         </div>
       </aside>
@@ -87,72 +69,81 @@
             <div class="doc-meta">
               <span>大小: {{ formatSize(state.currentFile.size) }}</span>
               <span>类型: {{ state.currentFile.mime_type }}</span>
-              <span v-if="state.currentFile.modified">
-                修改: {{ formatDate(state.currentFile.modified) }}
-              </span>
             </div>
           </div>
 
-          <!-- 文本文件显示 -->
+          <!-- 文本文件 -->
           <div v-if="parsedContent.type === 'text'" class="text-viewer">
-            <pre class="text-content">{{ parsedContent.content }}</pre>
+            <textarea
+              v-model="textContent"
+              class="text-editor"
+              placeholder="输入文本内容..."
+            ></textarea>
           </div>
 
-          <!-- Word 文档显示 -->
+          <!-- Word 文档 -->
           <div v-else-if="parsedContent.type === 'html'" class="word-editor">
             <div class="editor-toolbar">
-              <button class="btn btn-small" @click="execCmd('bold')"><b>B</b></button>
-              <button class="btn btn-small" @click="execCmd('italic')"><i>I</i></button>
-              <button class="btn btn-small" @click="execCmd('underline')"><u>U</u></button>
+              <button class="btn btn-small" @click="formatBlock('bold')" title="加粗"><b>B</b></button>
+              <button class="btn btn-small" @click="formatBlock('italic')" title="斜体"><i>I</i></button>
+              <button class="btn btn-small" @click="formatBlock('underline')" title="下划线"><u>U</u></button>
+              <button class="btn btn-small" @click="formatBlock('strikeThrough')" title="删除线"><s>S</s></button>
               <span class="separator">|</span>
-              <button class="btn btn-small" @click="execCmd('justifyLeft')">⬅</button>
-              <button class="btn btn-small" @click="execCmd('justifyCenter')">↔</button>
-              <button class="btn btn-small" @click="execCmd('justifyRight')">➡</button>
+              <button class="btn btn-small" @click="formatBlock('justifyLeft')" title="左对齐">⬅</button>
+              <button class="btn btn-small" @click="formatBlock('justifyCenter')" title="居中">↔</button>
+              <button class="btn btn-small" @click="formatBlock('justifyRight')" title="右对齐">➡</button>
+              <span class="separator">|</span>
+              <button class="btn btn-small" @click="formatBlock('insertUnorderedList')" title="无序列表">• 列表</button>
+              <button class="btn btn-small" @click="formatBlock('insertOrderedList')" title="有序列表">1. 列表</button>
+              <span class="separator">|</span>
+              <button class="btn btn-small" @click="formatBlock('undo')" title="撤销">↩</button>
+              <button class="btn btn-small" @click="formatBlock('redo')" title="重做">↪</button>
             </div>
-            <div
-              ref="editorRef"
-              class="editor-content"
-              contenteditable="true"
-              @input="onEditorInput"
-              v-html="parsedContent.content"
-            ></div>
+            <div class="editor-scroll-area">
+              <div
+                ref="editorRef"
+                class="editor-content"
+                contenteditable="true"
+                @input="onEditorInput"
+                v-html="parsedContent.content"
+              ></div>
+            </div>
           </div>
 
-          <!-- Excel 表格显示 -->
+          <!-- Excel 表格 -->
           <div v-else-if="parsedContent.type === 'spreadsheet'" class="excel-viewer">
-            <div v-if="parsedContent.rows && parsedContent.rows.length > 0" class="spreadsheet">
+            <div class="table-scroll-area">
               <table class="data-table">
                 <tbody>
                   <tr v-for="(row, rowIndex) in parsedContent.rows" :key="rowIndex">
-                    <td
-                      v-for="(cell, cellIndex) in row"
-                      :key="cellIndex"
-                      class="cell"
-                    >
-                      {{ cell }}
+                    <td v-for="(cell, cellIndex) in row" :key="cellIndex" class="cell">
+                      <input v-model="parsedContent.rows![rowIndex][cellIndex]" class="cell-input" />
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <div v-else class="placeholder">
-              <p>无法解析表格数据</p>
-            </div>
           </div>
 
-          <!-- PDF 预览区 -->
+          <!-- PDF 预览 -->
           <div v-else-if="parsedContent.type === 'pdf'" class="pdf-viewer">
-            <iframe
-              :src="pdfBlobUrl"
-              class="pdf-frame"
-              title="PDF Viewer"
-            ></iframe>
+            <div class="pdf-toolbar">
+              <button class="btn btn-small" @click="pdfZoomOut">➖</button>
+              <span class="pdf-zoom">{{ Math.round(pdfZoom * 100) }}%</span>
+              <button class="btn btn-small" @click="pdfZoomIn">➕</button>
+              <span class="separator">|</span>
+              <button class="btn btn-small" @click="pdfPrevPage" :disabled="pdfPage <= 1">◀</button>
+              <span class="pdf-page">{{ pdfPage }} / {{ pdfTotalPages }}</span>
+              <button class="btn btn-small" @click="pdfNextPage" :disabled="pdfPage >= pdfTotalPages">▶</button>
+            </div>
+            <div class="pdf-scroll-area">
+              <canvas ref="pdfCanvas" class="pdf-canvas"></canvas>
+            </div>
           </div>
 
           <!-- 其他格式 -->
           <div v-else class="unsupported">
             <p>暂不支持该格式的预览</p>
-            <p>文件已加载，可尝试"Word转PDF"功能</p>
           </div>
         </div>
 
@@ -161,16 +152,9 @@
           <div class="empty-content">
             <span class="empty-icon">📄</span>
             <h3>欢迎使用 DocVault</h3>
-            <p>完全离线、跨平台的文档管理解决方案</p>
-            <ul class="feature-list">
-              <li>📝 Word 文档查看</li>
-              <li>📊 Excel 表格查看</li>
-              <li>📕 PDF 查看</li>
-              <li>📝 文本文件编辑</li>
-              <li>🔒 完全离线，数据安全</li>
-            </ul>
+            <p>完全离线、跨平台的文档管理</p>
             <button class="btn btn-primary btn-large" @click="openFile">
-              打开文件开始
+              打开文件
             </button>
           </div>
         </div>
@@ -179,64 +163,108 @@
 
     <!-- 底部状态栏 -->
     <footer class="status-bar">
-      <span v-if="state.loading" class="status-loading">
-        ⏳ 处理中...
-      </span>
-      <span v-else class="status-ready">
-        ✅ 就绪
-      </span>
-      <span class="status-info">
-        {{ state.currentFile ? state.currentFile.name : '未打开文件' }}
-      </span>
-      <span class="status-platform">
-        {{ platform }}
-      </span>
+      <span v-if="state.loading" class="status-loading">⏳ 处理中...</span>
+      <span v-else class="status-ready">✅ 就绪</span>
+      <span class="status-info">{{ state.currentFile ? state.currentFile.name : '未打开文件' }}</span>
     </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { platform as detectPlatform } from '@tauri-apps/plugin-os'
 import { useDocVault } from './composables/useDocVault'
+import * as pdfjsLib from 'pdfjs-dist'
+
+// PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+).toString()
 
 const { state, parsedContent, openFile, saveFile, convertToPdf, scanDir, formatSize, getFileIcon } = useDocVault()
 
 const editorRef = ref<HTMLDivElement | null>(null)
-const pdfBlobUrl = ref<string>('')
-const platform = ref('unknown')
+const textContent = ref('')
+const pdfCanvas = ref<HTMLCanvasElement | null>(null)
+const pdfDoc = ref<any>(null)
+const pdfPage = ref(1)
+const pdfTotalPages = ref(0)
+const pdfZoom = ref(1.0)
 
-const getDefaultDir = ''
-
-// 计算属性
-const isWordFile = computed(() =>
-  ['docx', 'doc'].includes(state.currentFile?.extension || '')
-)
-const isExcelFile = computed(() =>
-  ['xlsx', 'xls'].includes(state.currentFile?.extension || '')
-)
-const isPdfFile = computed(() =>
-  state.currentFile?.extension === 'pdf'
-)
-
-// 监听 PDF 内容变化，创建 blob URL
+// PDF 渲染
 watch(
   () => parsedContent.value,
-  (content) => {
+  async (content) => {
     if (content.type === 'pdf' && content.content) {
-      // 创建 Blob URL
-      const binaryString = atob(content.content)
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
-      }
-      const blob = new Blob([bytes], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      pdfBlobUrl.value = url
+      await nextTick()
+      await loadPdf(content.content)
     }
   }
 )
+
+async function loadPdf(base64: string) {
+  try {
+    const binaryString = atob(base64)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+
+    const loadingTask = pdfjsLib.getDocument({ data: bytes })
+    pdfDoc.value = await loadingTask.promise
+    pdfTotalPages.value = pdfDoc.value.numPages
+    pdfPage.value = 1
+    await renderPdfPage()
+  } catch (err) {
+    console.error('PDF load error:', err)
+  }
+}
+
+async function renderPdfPage() {
+  if (!pdfDoc.value || !pdfCanvas.value) return
+
+  try {
+    const page = await pdfDoc.value.getPage(pdfPage.value)
+    const viewport = page.getViewport({ scale: pdfZoom.value })
+    const canvas = pdfCanvas.value
+    const context = canvas.getContext('2d')!
+
+    canvas.height = viewport.height
+    canvas.width = viewport.width
+
+    await page.render({
+      canvasContext: context,
+      viewport: viewport,
+    }).promise
+  } catch (err) {
+    console.error('PDF render error:', err)
+  }
+}
+
+function pdfZoomIn() {
+  pdfZoom.value = Math.min(pdfZoom.value + 0.25, 3.0)
+  renderPdfPage()
+}
+
+function pdfZoomOut() {
+  pdfZoom.value = Math.max(pdfZoom.value - 0.25, 0.5)
+  renderPdfPage()
+}
+
+function pdfPrevPage() {
+  if (pdfPage.value > 1) {
+    pdfPage.value--
+    renderPdfPage()
+  }
+}
+
+function pdfNextPage() {
+  if (pdfPage.value < pdfTotalPages.value) {
+    pdfPage.value++
+    renderPdfPage()
+  }
+}
 
 // 方法
 async function openFileByPath(path: string) {
@@ -251,7 +279,7 @@ async function openFileByPath(path: string) {
   }
 }
 
-function execCmd(command: string, value?: string) {
+function formatBlock(command: string, value?: string) {
   document.execCommand(command, false, value)
 }
 
@@ -259,10 +287,6 @@ function onEditorInput() {
   if (editorRef.value) {
     parsedContent.value.content = editorRef.value.innerHTML
   }
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('zh-CN')
 }
 
 interface FileData {
@@ -276,13 +300,7 @@ interface FileData {
   created: string | null
 }
 
-onMounted(async () => {
-  try {
-    platform.value = await detectPlatform()
-  } catch {
-    platform.value = 'desktop'
-  }
-})
+onMounted(async () => {})
 </script>
 
 <style scoped>
@@ -301,7 +319,7 @@ onMounted(async () => {
   padding: 12px 24px;
   background: #1a1a2e;
   color: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
 }
 
 .toolbar-left {
@@ -341,30 +359,12 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
-.btn-primary {
-  background: #4361ee;
-  color: white;
-}
-.btn-primary:hover:not(:disabled) {
-  background: #3a56d4;
-}
-
-.btn-success {
-  background: #06d6a0;
-  color: white;
-}
-.btn-success:hover:not(:disabled) {
-  background: #05c291;
-}
-
-.btn-warning {
-  background: #ff9e00;
-  color: white;
-}
-.btn-warning:hover:not(:disabled) {
-  background: #e68f00;
-}
-
+.btn-primary { background: #4361ee; color: white; }
+.btn-primary:hover:not(:disabled) { background: #3a56d4; }
+.btn-success { background: #06d6a0; color: white; }
+.btn-success:hover:not(:disabled) { background: #05c291; }
+.btn-warning { background: #ff9e00; color: white; }
+.btn-warning:hover:not(:disabled) { background: #e68f00; }
 .btn-small {
   padding: 4px 10px;
   font-size: 12px;
@@ -378,36 +378,15 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   font-size: 14px;
+  flex-shrink: 0;
 }
 
-.alert-error {
-  background: #fee2e2;
-  color: #dc2626;
-}
+.alert-error { background: #fee2e2; color: #dc2626; }
+.alert-success { background: #dcfce7; color: #16a34a; }
+.alert-close { background: none; border: none; font-size: 18px; cursor: pointer; opacity: 0.7; }
 
-.alert-success {
-  background: #dcfce7;
-  color: #16a34a;
-}
-
-.alert-close {
-  background: none;
-  border: none;
-  font-size: 18px;
-  cursor: pointer;
-  opacity: 0.7;
-}
-
-.progress-bar {
-  height: 3px;
-  background: #e5e7eb;
-}
-
-.progress-fill {
-  height: 100%;
-  background: #4361ee;
-  transition: width 0.3s ease;
-}
+.progress-bar { height: 3px; background: #e5e7eb; flex-shrink: 0; }
+.progress-fill { height: 100%; background: #4361ee; transition: width 0.3s ease; }
 
 .main-content {
   display: flex;
@@ -416,26 +395,20 @@ onMounted(async () => {
 }
 
 .sidebar {
-  width: 280px;
+  width: 260px;
   background: white;
   border-right: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .sidebar-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid #e5e7eb;
 }
 
-.sidebar-header h3 {
-  margin: 0;
-  font-size: 14px;
-  color: #374151;
-}
+.sidebar-header h3 { margin: 0; font-size: 14px; color: #374151; }
 
 .file-list {
   flex: 1;
@@ -447,50 +420,21 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s;
 }
 
-.file-item:hover {
-  background: #f3f4f6;
-}
+.file-item:hover { background: #f3f4f6; }
+.file-item.active { background: #eef2ff; border: 1px solid #c7d2fe; }
 
-.file-item.active {
-  background: #eef2ff;
-  border: 1px solid #c7d2fe;
-}
+.file-icon { font-size: 18px; }
 
-.file-icon {
-  font-size: 20px;
-}
+.file-info { display: flex; flex-direction: column; overflow: hidden; }
+.file-name { font-size: 13px; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-meta { font-size: 11px; color: #9ca3af; }
 
-.file-info {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.file-name {
-  font-size: 13px;
-  color: #1f2937;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-meta {
-  font-size: 11px;
-  color: #9ca3af;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: #9ca3af;
-  font-size: 13px;
-}
+.empty-state { text-align: center; padding: 30px 20px; color: #9ca3af; font-size: 13px; }
 
 .editor-area {
   flex: 1;
@@ -503,43 +447,37 @@ onMounted(async () => {
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .doc-header {
-  padding: 16px 24px;
+  padding: 12px 24px;
   background: white;
   border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
 }
 
-.doc-header h2 {
-  margin: 0 0 8px 0;
-  font-size: 18px;
-  color: #1f2937;
-}
+.doc-header h2 { margin: 0 0 4px 0; font-size: 16px; color: #1f2937; }
+.doc-meta { display: flex; gap: 16px; font-size: 12px; color: #6b7280; }
 
-.doc-meta {
-  display: flex;
-  gap: 16px;
-  font-size: 12px;
-  color: #6b7280;
-}
-
-/* 文本文件查看器 */
+/* 文本编辑器 */
 .text-viewer {
   flex: 1;
-  overflow: auto;
-  background: #fafafa;
+  overflow: hidden;
+  background: white;
 }
 
-.text-content {
+.text-editor {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
   padding: 24px;
-  margin: 0;
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-family: 'Menlo', 'Monaco', monospace;
   font-size: 14px;
   line-height: 1.6;
-  color: #374151;
-  white-space: pre-wrap;
-  word-wrap: break-word;
+  resize: none;
+  background: #fafafa;
 }
 
 /* Word 编辑器 */
@@ -548,6 +486,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   background: white;
+  overflow: hidden;
 }
 
 .editor-toolbar {
@@ -556,23 +495,29 @@ onMounted(async () => {
   padding: 8px 16px;
   border-bottom: 1px solid #e5e7eb;
   background: #f9fafb;
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
-.separator {
-  color: #d1d5db;
-  padding: 0 4px;
+.separator { color: #d1d5db; padding: 0 4px; }
+
+.editor-scroll-area {
+  flex: 1;
+  overflow: auto;
+  background: #e5e7eb;
+  padding: 24px;
 }
 
 .editor-content {
-  flex: 1;
-  padding: 40px;
   max-width: 800px;
-  width: 100%;
+  min-height: 100%;
   margin: 0 auto;
+  padding: 40px;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   outline: none;
   line-height: 1.8;
   color: #374151;
-  overflow-y: auto;
 }
 
 /* Excel 查看器 */
@@ -582,8 +527,9 @@ onMounted(async () => {
   background: white;
 }
 
-.spreadsheet {
+.table-scroll-area {
   padding: 16px;
+  overflow: auto;
 }
 
 .data-table {
@@ -594,36 +540,59 @@ onMounted(async () => {
 
 .data-table td {
   border: 1px solid #e5e7eb;
-  padding: 6px 12px;
-  text-align: left;
+  padding: 0;
   min-width: 80px;
 }
 
-.data-table tr:first-child td {
-  background: #f3f4f6;
-  font-weight: 600;
+.cell-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  padding: 6px 10px;
+  font-size: 13px;
 }
 
-.data-table tr:hover td {
-  background: #f9fafb;
+.data-table tr:first-child td .cell-input {
+  background: #f3f4f6;
+  font-weight: 600;
 }
 
 /* PDF 查看器 */
 .pdf-viewer {
   flex: 1;
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #374151;
+  overflow: hidden;
 }
 
-.pdf-frame {
-  width: 100%;
-  height: 100%;
-  border: none;
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #1f2937;
+  color: white;
+  flex-shrink: 0;
 }
 
-.placeholder {
-  padding: 40px;
+.pdf-zoom, .pdf-page {
+  font-size: 12px;
+  min-width: 60px;
   text-align: center;
-  color: #6b7280;
+}
+
+.pdf-scroll-area {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.pdf-canvas {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .unsupported {
@@ -642,42 +611,12 @@ onMounted(async () => {
   justify-content: center;
 }
 
-.empty-content {
-  text-align: center;
-  max-width: 400px;
-}
+.empty-content { text-align: center; max-width: 400px; }
+.empty-icon { font-size: 64px; }
+.empty-content h3 { margin: 16px 0 8px; color: #1f2937; }
+.empty-content p { color: #6b7280; margin-bottom: 24px; }
 
-.empty-icon {
-  font-size: 64px;
-}
-
-.empty-content h3 {
-  margin: 16px 0 8px;
-  color: #1f2937;
-}
-
-.empty-content p {
-  color: #6b7280;
-  margin-bottom: 24px;
-}
-
-.feature-list {
-  list-style: none;
-  padding: 0;
-  text-align: left;
-  margin-bottom: 32px;
-}
-
-.feature-list li {
-  padding: 8px 0;
-  color: #4b5563;
-  font-size: 14px;
-}
-
-.btn-large {
-  padding: 12px 24px;
-  font-size: 16px;
-}
+.btn-large { padding: 12px 24px; font-size: 16px; }
 
 .status-bar {
   display: flex;
@@ -687,22 +626,10 @@ onMounted(async () => {
   background: #1a1a2e;
   color: white;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
-.status-loading {
-  color: #fbbf24;
-}
-
-.status-ready {
-  color: #34d399;
-}
-
-.status-info {
-  opacity: 0.8;
-}
-
-.status-platform {
-  opacity: 0.6;
-  font-size: 11px;
-}
+.status-loading { color: #fbbf24; }
+.status-ready { color: #34d399; }
+.status-info { opacity: 0.8; }
 </style>

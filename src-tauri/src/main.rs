@@ -247,24 +247,29 @@ pub mod commands {
             }
         }
 
-        match perform_docx_to_pdf_conversion(&docx_path, &pdf_path).await {
-            Ok(file_size) => {
-                let result = ConvertResult {
-                    success: true,
-                    output_path: pdf_path.to_string_lossy().to_string(),
-                    message: "Conversion completed successfully".to_string(),
-                    file_size,
-                };
-                log::info!(
-                    "Converted {} -> {} ({} bytes)",
-                    docx_path.display(),
-                    pdf_path.display(),
-                    file_size
-                );
-                Ok(result)
-            }
-            Err(e) => Err(format!("Conversion error: {}", e)),
-        }
+        // 在阻塞线程中执行转换
+        let docx_path_clone = docx_path.clone();
+        let pdf_path_clone = pdf_path.clone();
+        let file_size = tokio::task::spawn_blocking(move || {
+            perform_docx_to_pdf_blocking(&docx_path_clone, &pdf_path_clone)
+        })
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
+        .map_err(|e| format!("Conversion error: {}", e))?;
+
+        let result = ConvertResult {
+            success: true,
+            output_path: pdf_path.to_string_lossy().to_string(),
+            message: "Conversion completed successfully".to_string(),
+            file_size,
+        };
+        log::info!(
+            "Converted {} -> {} ({} bytes)",
+            docx_path.display(),
+            pdf_path.display(),
+            file_size
+        );
+        Ok(result)
     }
 
     /// 扫描目录
@@ -378,12 +383,67 @@ pub mod commands {
         Ok(PathBuf::from(path))
     }
 
-    async fn perform_docx_to_pdf_conversion(
+    /// 同步执行 docx 转 PDF（用于 spawn_blocking）
+    fn perform_docx_to_pdf_blocking(
         docx_path: &Path,
         pdf_path: &Path,
     ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
-        let docx_data = tokio::fs::read(docx_path).await?;
-        let cursor = std::io::Cursor::new(&docx_data);
+        use printpdf::*;
+        use std::io::BufWriter;
+
+        // 读取 docx 文件
+        let docx_data = std::fs::read(docx_path)?;
+
+        // 解析 docx 提取文本
+        let paragraphs = extract_docx_text(&docx_data)
+            .unwrap_or_else(|_| vec!["(无法解析文档内容)".to_string()]);
+
+        // 生成 PDF
+        let (doc_pdf, page1, layer1) =
+            PdfDocument::new("Converted Document", Mm(210.0), Mm(297.0), "Layer 1");
+
+        let current_layer = doc_pdf.get_page(page1).get_layer(layer1);
+
+        let font = doc_pdf.add_builtin_font(BuiltinFont::Helvetica)
+            .or_else(|_| doc_pdf.add_builtin_font(BuiltinFont::TimesRoman))
+            .or_else(|_| doc_pdf.add_builtin_font(BuiltinFont::Courier))?;
+
+        let mut y_position = Mm(270.0);
+        let line_height = Mm(7.0);
+        let margin_left = Mm(20.0);
+
+        for text in &paragraphs {
+            if y_position < Mm(20.0) {
+                let (new_page, new_layer) = doc_pdf.add_page(Mm(210.0), Mm(297.0), "New Page");
+                let layer = doc_pdf.get_page(new_page).get_layer(new_layer);
+                y_position = Mm(270.0);
+
+                let wrapped = wrap_text(text, 90);
+                for line in wrapped {
+                    layer.use_text(line, 12.0, margin_left, y_position, &font);
+                    y_position -= line_height;
+                }
+            } else {
+                let wrapped = wrap_text(text, 90);
+                for line in wrapped {
+                    current_layer.use_text(line, 12.0, margin_left, y_position, &font);
+                    y_position -= line_height;
+                }
+            }
+            y_position -= line_height;
+        }
+
+        let file = std::fs::File::create(pdf_path)?;
+        let mut buf_writer = BufWriter::new(file);
+        doc_pdf.save(&mut buf_writer)?;
+
+        let output_size = std::fs::metadata(pdf_path)?.len();
+        Ok(output_size)
+    }
+
+    /// 从 docx 文件中提取文本
+    fn extract_docx_text(data: &[u8]) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let cursor = std::io::Cursor::new(data);
         let mut archive = zip::ZipArchive::new(cursor)?;
 
         let mut document_xml = String::new();
@@ -392,11 +452,7 @@ pub mod commands {
             std::io::Read::read_to_string(&mut file, &mut document_xml)?;
         }
 
-        let parsed_content = parse_docx_xml(&document_xml);
-        generate_pdf(&parsed_content, pdf_path)?;
-
-        let output_size = tokio::fs::metadata(pdf_path).await?.len();
-        Ok(output_size)
+        Ok(parse_docx_xml(&document_xml))
     }
 
     fn parse_docx_xml(xml: &str) -> Vec<String> {
@@ -406,6 +462,9 @@ pub mod commands {
         for line in xml.lines() {
             let trimmed = line.trim();
             if trimmed.contains("<w:p>") || trimmed.contains("<w:p ") {
+                if !current.trim().is_empty() {
+                    paragraphs.push(current.clone());
+                }
                 current.clear();
             }
             if trimmed.contains("<w:t") {
@@ -416,42 +475,48 @@ pub mod commands {
                     }
                 }
             }
-            if trimmed.contains("</w:p>") && !current.trim().is_empty() {
-                paragraphs.push(current.clone());
-            }
         }
+
+        if !current.trim().is_empty() {
+            paragraphs.push(current);
+        }
+
+        if paragraphs.is_empty() {
+            paragraphs.push("(空文档)".to_string());
+        }
+
         paragraphs
     }
 
-    fn generate_pdf(
-        paragraphs: &[String],
-        output_path: &Path,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        use printpdf::*;
-        use std::io::BufWriter;
+    /// 简单的文本换行
+    fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
+        let mut result = Vec::new();
+        let mut current_line = String::new();
 
-        let (doc_pdf, page1, layer1) =
-            PdfDocument::new("Converted Document", Mm(210.0), Mm(297.0), "Layer 1");
-
-        let current_layer = doc_pdf.get_page(page1).get_layer(layer1);
-        let font = doc_pdf.add_builtin_font(BuiltinFont::Helvetica)?;
-
-        let mut y_position = Mm(270.0);
-        let line_height = Mm(7.0);
-        let margin_left = Mm(20.0);
-
-        for text in paragraphs {
-            if y_position < Mm(20.0) {
-                y_position = Mm(270.0);
+        for word in text.split_whitespace() {
+            if current_line.len() + word.len() + 1 > max_chars {
+                if !current_line.is_empty() {
+                    result.push(current_line.clone());
+                    current_line.clear();
+                }
+                current_line.push_str(word);
+            } else {
+                if !current_line.is_empty() {
+                    current_line.push(' ');
+                }
+                current_line.push_str(word);
             }
-            current_layer.use_text(text.clone(), 12.0, margin_left, y_position, &font);
-            y_position -= line_height * 2.0;
         }
 
-        let file = std::fs::File::create(output_path)?;
-        let mut buf_writer = BufWriter::new(file);
-        doc_pdf.save(&mut buf_writer)?;
-        Ok(())
+        if !current_line.is_empty() {
+            result.push(current_line);
+        }
+
+        if result.is_empty() {
+            result.push(text.to_string());
+        }
+
+        result
     }
 }
 

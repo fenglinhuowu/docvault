@@ -1,6 +1,7 @@
 import { ref, reactive } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
+import mammoth from 'mammoth'
 
 // ==================== 类型定义 ====================
 
@@ -101,19 +102,18 @@ async function parseFileContent(fileData: FileData) {
   const ext = fileData.extension
 
   if (ext === 'txt') {
-    // 文本文件直接解码
     const text = atob(fileData.content_base64)
     parsedContent.value = { type: 'text', content: text }
   } else if (ext === 'pdf') {
-    // PDF 使用 blob URL
     parsedContent.value = { type: 'pdf', content: fileData.content_base64 }
   } else if (ext === 'docx') {
-    // 调用 Rust 端解析 docx
+    // 使用 mammoth.js 解析 docx（保留格式）
     try {
-      const html = await invoke<string>('parse_docx', { path: fileData.path })
-      parsedContent.value = { type: 'html', content: html }
+      const arrayBuffer = base64ToArrayBuffer(fileData.content_base64)
+      const result = await mammoth.convertToHtml({ arrayBuffer })
+      parsedContent.value = { type: 'html', content: result.value }
     } catch {
-      parsedContent.value = { type: 'html', content: '<p>文档解析失败</p>' }
+      parsedContent.value = { type: 'html', content: '<p style="color:red">文档解析失败</p>' }
     }
   } else if (ext === 'xlsx' || ext === 'xls') {
     // 调用 Rust 端解析 xlsx
@@ -126,6 +126,18 @@ async function parseFileContent(fileData: FileData) {
   } else {
     parsedContent.value = { type: 'unsupported', content: '暂不支持该格式' }
   }
+}
+
+/**
+ * Base64 转 ArrayBuffer
+ */
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64)
+  const bytes = new Uint8Array(binaryString.length)
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
+  }
+  return bytes.buffer
 }
 
 /**
@@ -145,7 +157,6 @@ async function saveFile() {
       defaultPath: state.currentFile.name,
       filters: [
         { name: 'Word 文档', extensions: ['docx'] },
-        { name: 'Excel 表格', extensions: ['xlsx'] },
         { name: 'PDF 文档', extensions: ['pdf'] },
         { name: '纯文本', extensions: ['txt'] },
       ],
@@ -156,7 +167,6 @@ async function saveFile() {
       return
     }
 
-    // 将 Base64 转回 Uint8Array
     const binaryString = atob(state.currentFile.content_base64)
     const bytes = new Uint8Array(binaryString.length)
     for (let i = 0; i < binaryString.length; i++) {
