@@ -404,9 +404,9 @@ pub mod commands {
 
         let current_layer = doc_pdf.get_page(page1).get_layer(layer1);
 
-        let font = doc_pdf.add_builtin_font(BuiltinFont::Helvetica)
-            .or_else(|_| doc_pdf.add_builtin_font(BuiltinFont::TimesRoman))
-            .or_else(|_| doc_pdf.add_builtin_font(BuiltinFont::Courier))?;
+        // 加载支持中文的系统字体
+        let font_data = load_chinese_font()?;
+        let font = doc_pdf.add_external_font(font_data.as_slice())?;
 
         let mut y_position = Mm(270.0);
         let line_height = Mm(7.0);
@@ -418,13 +418,13 @@ pub mod commands {
                 let layer = doc_pdf.get_page(new_page).get_layer(new_layer);
                 y_position = Mm(270.0);
 
-                let wrapped = wrap_text(text, 90);
+                let wrapped = wrap_text(text, 40);
                 for line in wrapped {
                     layer.use_text(line, 12.0, margin_left, y_position, &font);
                     y_position -= line_height;
                 }
             } else {
-                let wrapped = wrap_text(text, 90);
+                let wrapped = wrap_text(text, 40);
                 for line in wrapped {
                     current_layer.use_text(line, 12.0, margin_left, y_position, &font);
                     y_position -= line_height;
@@ -439,6 +439,39 @@ pub mod commands {
 
         let output_size = std::fs::metadata(pdf_path)?.len();
         Ok(output_size)
+    }
+
+    /// 加载支持中文的系统字体
+    fn load_chinese_font() -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        // 按优先级尝试加载系统字体
+        let font_paths = if cfg!(target_os = "macos") {
+            vec![
+                "/System/Library/Fonts/STHeiti Medium.ttc",
+                "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                "/System/Library/Fonts/PingFang.ttc",
+                "/Library/Fonts/Arial Unicode.ttf",
+            ]
+        } else if cfg!(target_os = "windows") {
+            vec![
+                "C:\\Windows\\Fonts\\msyh.ttc",
+                "C:\\Windows\\Fonts\\simsun.ttc",
+                "C:\\Windows\\Fonts\\msyhbd.ttc",
+            ]
+        } else {
+            vec![
+                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            ]
+        };
+
+        for path in &font_paths {
+            if let Ok(data) = std::fs::read(path) {
+                return Ok(data);
+            }
+        }
+
+        Err("No Chinese font found on system".into())
     }
 
     /// 从 docx 文件中提取文本
