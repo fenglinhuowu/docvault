@@ -81,86 +81,62 @@
             ></textarea>
           </div>
 
-          <!-- Word 文档 -->
+          <!-- Word 文档编辑器 -->
           <div v-else-if="parsedContent.type === 'html'" class="word-editor">
-            <!-- 视图模式：完整显示 docx-preview 渲染的 HTML -->
-            <div v-if="!isEditing" class="view-mode">
-              <div class="editor-toolbar">
-                <button class="btn btn-primary btn-small" @click="startEditing">✏️ 编辑</button>
-                <span class="toolbar-hint">Word 文档预览（完整格式）</span>
-              </div>
-              <div class="editor-scroll-area">
-                <div
-                  class="editor-content docx-preview-content"
-                  v-html="parsedContent.content"
-                ></div>
-              </div>
+            <div class="editor-toolbar">
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleBold().run()" :class="{ active: editor?.isActive('bold') }" title="加粗"><b>B</b></button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleItalic().run()" :class="{ active: editor?.isActive('italic') }" title="斜体"><i>I</i></button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleUnderline().run()" :class="{ active: editor?.isActive('underline') }" title="下划线"><u>U</u></button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleStrike().run()" :class="{ active: editor?.isActive('strike') }" title="删除线"><s>S</s></button>
+              <span class="separator">|</span>
+              <!-- 字体选择 -->
+              <select class="toolbar-select" @change="setFontFamily(($event.target as HTMLSelectElement).value)">
+                <option value="">字体</option>
+                <option value="SimSun">宋体</option>
+                <option value="SimHei">黑体</option>
+                <option value="Microsoft YaHei">微软雅黑</option>
+                <option value="Arial">Arial</option>
+              </select>
+              <!-- 字号选择 -->
+              <select class="toolbar-select" @change="setFontSize(($event.target as HTMLSelectElement).value)">
+                <option value="">字号</option>
+                <option value="12">小五</option>
+                <option value="14">五号</option>
+                <option value="16">小四</option>
+                <option value="18">四号</option>
+                <option value="22">三号</option>
+              </select>
+              <span class="separator">|</span>
+              <!-- 标题 -->
+              <select class="toolbar-select" @change="setHeading(($event.target as HTMLSelectElement).value)">
+                <option value="">正文</option>
+                <option value="1">标题1</option>
+                <option value="2">标题2</option>
+                <option value="3">标题3</option>
+              </select>
+              <span class="separator">|</span>
+              <!-- 颜色 -->
+              <input type="color" class="toolbar-color" @input="setTextColor($event)" title="文字颜色" />
+              <input type="color" class="toolbar-color" @input="setHighlightColor($event)" title="背景色" />
+              <span class="separator">|</span>
+              <!-- 对齐 -->
+              <button class="btn btn-small" @click="editor?.chain().focus().setTextAlign('left').run()" title="左对齐">⬅</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().setTextAlign('center').run()" title="居中">↔</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().setTextAlign('right').run()" title="右对齐">➡</button>
+              <span class="separator">|</span>
+              <!-- 列表 -->
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleBulletList().run()" title="无序列表">•</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().toggleOrderedList().run()" title="有序列表">1.</button>
+              <span class="separator">|</span>
+              <!-- 撤销重做 -->
+              <button class="btn btn-small" @click="editor?.chain().focus().undo().run()" title="撤销">↩</button>
+              <button class="btn btn-small" @click="editor?.chain().focus().redo().run()" title="重做">↪</button>
+              <span class="separator">|</span>
+              <button class="btn btn-small" @click="insertImage" title="插入图片">🖼</button>
+              <button class="btn btn-small" @click="insertTable" title="插入表格">⊞</button>
             </div>
-            <!-- 编辑模式：TipTap 富文本编辑 -->
-            <div v-else class="edit-mode">
-              <div class="editor-toolbar">
-                <button class="btn btn-success btn-small" @click="stopEditing">✅ 完成</button>
-                <span class="separator">|</span>
-                <!-- 字体选择 -->
-                <select class="toolbar-select" @change="setFontFamily(($event.target as HTMLSelectElement).value)" :value="currentFontFamily">
-                  <option value="">字体</option>
-                  <option value="SimSun">宋体</option>
-                  <option value="SimHei">黑体</option>
-                  <option value="KaiTi">楷体</option>
-                  <option value="Microsoft YaHei">微软雅黑</option>
-                  <option value="Arial">Arial</option>
-                  <option value="Times New Roman">Times New Roman</option>
-                </select>
-                <!-- 字号选择 -->
-                <select class="toolbar-select" @change="setFontSize(($event.target as HTMLSelectElement).value)" :value="currentFontSize">
-                  <option value="">字号</option>
-                  <option value="12">小五</option>
-                  <option value="14">五号</option>
-                  <option value="16">小四</option>
-                  <option value="18">四号</option>
-                  <option value="22">三号</option>
-                  <option value="24">二号</option>
-                  <option value="36">一号</option>
-                </select>
-                <span class="separator">|</span>
-                <!-- 标题格式 -->
-                <select class="toolbar-select" @change="setHeading(($event.target as HTMLSelectElement).value)" :value="currentHeading">
-                  <option value="">正文</option>
-                  <option value="1">标题 1</option>
-                  <option value="2">标题 2</option>
-                  <option value="3">标题 3</option>
-                </select>
-                <span class="separator">|</span>
-                <!-- 文字格式 -->
-                <button class="btn btn-small" @click="editor?.chain().focus().toggleBold().run()" :class="{ active: editor?.isActive('bold') }" title="加粗"><b>B</b></button>
-                <button class="btn btn-small" @click="editor?.chain().focus().toggleItalic().run()" :class="{ active: editor?.isActive('italic') }" title="斜体"><i>I</i></button>
-                <button class="btn btn-small" @click="editor?.chain().focus().toggleUnderline().run()" :class="{ active: editor?.isActive('underline') }" title="下划线"><u>U</u></button>
-                <button class="btn btn-small" @click="editor?.chain().focus().toggleStrike().run()" :class="{ active: editor?.isActive('strike') }" title="删除线"><s>S</s></button>
-                <span class="separator">|</span>
-                <!-- 颜色 -->
-                <input type="color" class="toolbar-color" @input="setTextColor($event)" title="文字颜色" />
-                <input type="color" class="toolbar-color" @input="setHighlightColor($event)" title="高亮颜色" />
-                <span class="separator">|</span>
-                <!-- 对齐 -->
-                <button class="btn btn-small" @click="editor?.chain().focus().setTextAlign('left').run()" :class="{ active: editor?.isActive({ textAlign: 'left' }) }" title="左对齐">⬅</button>
-                <button class="btn btn-small" @click="editor?.chain().focus().setTextAlign('center').run()" :class="{ active: editor?.isActive({ textAlign: 'center' }) }" title="居中">↔</button>
-                <button class="btn btn-small" @click="editor?.chain().focus().setTextAlign('right').run()" :class="{ active: editor?.isActive({ textAlign: 'right' }) }" title="右对齐">➡</button>
-                <span class="separator">|</span>
-                <!-- 列表 -->
-                <button class="btn btn-small" @click="editor?.chain().focus().toggleBulletList().run()" :class="{ active: editor?.isActive('bulletList') }" title="无序列表">•</button>
-                <button class="btn btn-small" @click="editor?.chain().focus().toggleOrderedList().run()" :class="{ active: editor?.isActive('orderedList') }" title="有序列表">1.</button>
-                <span class="separator">|</span>
-                <!-- 撤销重做 -->
-                <button class="btn btn-small" @click="editor?.chain().focus().undo().run()" title="撤销">↩</button>
-                <button class="btn btn-small" @click="editor?.chain().focus().redo().run()" title="重做">↪</button>
-                <span class="separator">|</span>
-                <!-- 插入 -->
-                <button class="btn btn-small" @click="insertImage" title="插入图片">🖼</button>
-                <button class="btn btn-small" @click="insertTable" title="插入表格">⊞</button>
-              </div>
-              <div class="editor-scroll-area">
-                <editor-content :editor="editor" class="editor-content" />
-              </div>
+            <div class="editor-scroll-area">
+              <editor-content :editor="editor" class="editor-content" />
             </div>
           </div>
 
@@ -252,11 +228,6 @@ const currentFontFamily = ref('')
 const currentFontSize = ref('')
 const currentHeading = ref('')
 
-// 编辑模式
-const isEditing = ref(false)
-
-// 防止循环更新的标志（必须在 useEditor 之前定义）
-let isUpdatingFromWatch = false
 
 // TipTap 编辑器实例
 const editor = useEditor({
@@ -276,10 +247,8 @@ const editor = useEditor({
   ],
   content: '',
   onUpdate: ({ editor }) => {
-    // 同步更新 parsedContent，避免循环
-    if (!isUpdatingFromWatch) {
-      parsedContent.value = { type: 'html', content: editor.getHTML() }
-    }
+    // 同步更新 parsedContent
+    parsedContent.value = { type: 'html', content: editor.getHTML() }
   },
   onSelectionUpdate: ({ editor }) => {
     // 更新当前格式状态
@@ -340,31 +309,13 @@ function insertTable() {
   editor.value?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
 }
 
-// 编辑模式控制
-function startEditing() {
-  isEditing.value = true
-  if (editor.value) {
-    editor.value.commands.setContent(parsedContent.value.content)
-  }
-}
-
-function stopEditing() {
-  isEditing.value = false
-  if (editor.value) {
-    parsedContent.value = { type: 'html', content: editor.value.getHTML() }
-  }
-}
-
 // 监听 Word 内容变化，同步到编辑器
 watch(
   () => parsedContent.value,
   (content) => {
-    if (content.type === 'html' && editor.value && !isUpdatingFromWatch) {
-      // 仅在内容不同时更新，避免循环
+    if (content.type === 'html' && editor.value) {
       if (content.content !== editor.value.getHTML()) {
-        isUpdatingFromWatch = true
         editor.value.commands.setContent(content.content)
-        isUpdatingFromWatch = false
       }
     }
   }
@@ -616,14 +567,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   background: white;
-  overflow: hidden;
-}
-
-.view-mode,
-.edit-mode {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
 }
 
