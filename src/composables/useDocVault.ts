@@ -225,7 +225,7 @@ async function saveFile() {
 }
 
 /**
- * Word 转 PDF（完全离线）
+ * Word 转 PDF（完全离线，使用 headless Chrome）
  */
 async function convertToPdf() {
   if (!state.currentFile) {
@@ -255,9 +255,13 @@ async function convertToPdf() {
 
     state.conversionProgress = 30
 
+    // 获取当前渲染的 HTML 内容
+    const htmlContent = parsedContent.value.content
+
     const result = await invoke<ConvertResult>('convert_docx_to_pdf', {
       docxPath: state.currentFile.path,
       pdfPath: outputPath,
+      htmlContent,
     })
 
     state.conversionProgress = 100

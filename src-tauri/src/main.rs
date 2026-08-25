@@ -218,11 +218,12 @@ pub mod commands {
         Ok(())
     }
 
-    /// Word 文档转换为 PDF（离线实现）
+    /// Word 文档转换为 PDF（使用 headless Chrome）
     #[tauri::command]
     pub async fn convert_docx_to_pdf(
         docx_path: String,
         pdf_path: String,
+        html_content: String,
     ) -> Result<ConvertResult, String> {
         let docx_path = validate_path(&docx_path)?;
         let pdf_path = validate_path(&pdf_path)?;
@@ -231,45 +232,64 @@ pub mod commands {
             return Err(format!("File not found: {}", docx_path.display()));
         }
 
-        let ext = docx_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        if ext != "docx" {
-            return Err(format!("Expected .docx file, got .{}", ext));
-        }
-
         if let Some(parent) = pdf_path.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
         }
 
-        // 在阻塞线程中执行转换
-        let docx_path_clone = docx_path.clone();
-        let pdf_path_clone = pdf_path.clone();
-        let file_size = tokio::task::spawn_blocking(move || {
-            perform_docx_to_pdf_blocking(&docx_path_clone, &pdf_path_clone)
-        })
-        .await
-        .map_err(|e| format!("Task join error: {}", e))?
-        .map_err(|e| format!("Conversion error: {}", e))?;
+        // 将 HTML 内容保存到临时文件
+        let temp_dir = std::env::temp_dir();
+        let temp_html = temp_dir.join(format!("docvault_{}.html", std::process::id()));
+        fs::write(&temp_html, &html_content).map_err(|e| e.to_string())?;
 
-        let result = ConvertResult {
+        // 使用 headless Chrome 转换为 PDF
+        use headless_chrome::{Browser, LaunchOptions};
+
+        let browser = Browser::new(LaunchOptions {
+            headless: true,
+            ..Default::default()
+        })
+        .map_err(|e| format!("Failed to launch Chrome: {}", e))?;
+
+        let tab = browser.new_tab().map_err(|e| e.to_string())?;
+        let url = format!("file://{}", temp_html.display());
+        tab.navigate_to(&url).map_err(|e| e.to_string())?;
+        tab.wait_until_navigated().map_err(|e| e.to_string())?;
+
+        // 等待页面渲染完成
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        // 导出为 PDF
+        let pdf_data = tab
+            .print_to_pdf(Some(headless_chrome::types::PrintToPdfOptions {
+                landscape: Some(false),
+                display_header_footer: Some(false),
+                print_background: Some(true),
+                margin_top: Some(0.4),
+                margin_bottom: Some(0.4),
+                margin_left: Some(0.4),
+                margin_right: Some(0.4),
+                paper_width: Some(8.27),
+                paper_height: Some(11.69),
+                scale: Some(1.0),
+                ..Default::default()
+            }))
+            .map_err(|e| format!("Failed to export PDF: {}", e))?;
+
+        fs::write(&pdf_path, &pdf_data).map_err(|e| e.to_string())?;
+
+        // 清理临时文件
+        let _ = fs::remove_file(&temp_html);
+
+        let file_size = fs::metadata(&pdf_path).map(|m| m.len()).unwrap_or(0);
+
+        Ok(ConvertResult {
             success: true,
             output_path: pdf_path.to_string_lossy().to_string(),
             message: "Conversion completed successfully".to_string(),
             file_size,
-        };
-        log::info!(
-            "Converted {} -> {} ({} bytes)",
-            docx_path.display(),
-            pdf_path.display(),
-            file_size
-        );
-        Ok(result)
+        })
     }
 
     /// 扫描目录
@@ -381,84 +401,6 @@ pub mod commands {
             return Err("Empty path".to_string());
         }
         Ok(PathBuf::from(path))
-    }
-
-    /// 同步执行 docx 转 PDF（用于 spawn_blocking）
-    fn perform_docx_to_pdf_blocking(
-        docx_path: &Path,
-        pdf_path: &Path,
-    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
-        use genpdf::elements::Paragraph;
-        use genpdf::fonts::{self, FontFamily};
-        use genpdf::Document;
-        use std::io::BufWriter;
-
-        // 读取 docx 文件
-        let docx_data = std::fs::read(docx_path)?;
-
-        // 解析 docx 提取文本
-        let paragraphs = extract_docx_text(&docx_data)
-            .unwrap_or_else(|_| vec!["(无法解析文档内容)".to_string()]);
-
-        // 查找中文字体文件
-        let font_path = find_chinese_font_path()?;
-        let font_dir = font_path.parent().ok_or("Invalid font path")?;
-        let font_name = font_path.file_stem()
-            .ok_or("Invalid font name")?
-            .to_str()
-            .ok_or("Invalid font name")?;
-
-        // 加载字体
-        let font_family: FontFamily<fonts::FontData> = fonts::from_files(font_dir, font_name, None)
-            .map_err(|e| format!("Failed to load font: {:?}", e))?;
-
-        // 创建 PDF 文档
-        let mut doc = Document::new(font_family);
-        doc.set_title("Converted Document");
-        doc.set_paper_size(genpdf::PaperSize::A4);
-        doc.set_font_size(12);
-
-        for text in &paragraphs {
-            doc.push(Paragraph::new(text));
-        }
-
-        // 渲染并保存 PDF
-        let mut buf_writer = BufWriter::new(std::fs::File::create(pdf_path)?);
-        doc.render(&mut buf_writer)?;
-
-        let output_size = std::fs::metadata(pdf_path)?.len();
-        Ok(output_size)
-    }
-
-    /// 查找中文字体文件路径
-    fn find_chinese_font_path() -> Result<std::path::PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-        let font_paths = if cfg!(target_os = "macos") {
-            vec![
-                "/System/Library/Fonts/STHeiti Medium.ttc",
-                "/System/Library/Fonts/Hiragino Sans GB.ttc",
-                "/System/Library/Fonts/PingFang.ttc",
-                "/System/Library/Fonts/Supplemental/Songti.ttc",
-            ]
-        } else if cfg!(target_os = "windows") {
-            vec![
-                "C:\\Windows\\Fonts\\msyh.ttc",
-                "C:\\Windows\\Fonts\\simsun.ttc",
-            ]
-        } else {
-            vec![
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-            ]
-        };
-
-        for path in &font_paths {
-            let p = std::path::PathBuf::from(path);
-            if p.exists() {
-                return Ok(p);
-            }
-        }
-
-        Err("No Chinese font found on system".into())
     }
 
     /// 加载支持中文的系统字体（保留用于备用）
