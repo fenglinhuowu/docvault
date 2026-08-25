@@ -123,7 +123,10 @@ async function parseFileContent(fileData: FileData) {
       container.style.top = '-9999px'
       document.body.appendChild(container)
 
-      await renderAsync(arrayBuffer, container, container, {
+      const styleContainer = document.createElement('div')
+      document.body.appendChild(styleContainer)
+
+      await renderAsync(arrayBuffer, container, styleContainer, {
         className: 'docx',
         inWrapper: true,
         ignoreWidth: false,
@@ -143,6 +146,7 @@ async function parseFileContent(fileData: FileData) {
       // 获取渲染后的 HTML
       const html = container.innerHTML
       document.body.removeChild(container)
+      document.body.removeChild(styleContainer)
 
       // 存储为非响应式数据
       parsedContent.value = { type: 'html', content: html }

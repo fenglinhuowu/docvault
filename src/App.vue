@@ -252,8 +252,10 @@ const editor = useEditor({
   ],
   content: '',
   onUpdate: ({ editor }) => {
-    // 同步更新 parsedContent
-    parsedContent.value = { type: 'html', content: editor.getHTML() }
+    // 同步更新 parsedContent，避免循环
+    if (!isUpdatingFromWatch) {
+      parsedContent.value = { type: 'html', content: editor.getHTML() }
+    }
   },
   onSelectionUpdate: ({ editor }) => {
     // 更新当前格式状态
@@ -314,15 +316,36 @@ function insertTable() {
   editor.value?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
 }
 
+// 防止循环更新的标志
+let isUpdatingFromWatch = false
+
 // 监听 Word 内容变化，同步到编辑器
 watch(
   () => parsedContent.value,
   (content) => {
-    if (content.type === 'html' && editor.value) {
+    if (content.type === 'html' && editor.value && !isUpdatingFromWatch) {
       // 仅在内容不同时更新，避免循环
       if (content.content !== editor.value.getHTML()) {
+        isUpdatingFromWatch = true
         editor.value.commands.setContent(content.content)
+        isUpdatingFromWatch = false
       }
+    }
+  }
+)
+
+// PDF blob URL 监听
+watch(
+  () => parsedContent.value,
+  (content) => {
+    if (content.type === 'pdf' && content.content) {
+      const binaryString = atob(content.content)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' })
+      pdfBlobUrl.value = URL.createObjectURL(blob)
     }
   }
 )
