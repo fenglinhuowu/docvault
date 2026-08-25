@@ -81,19 +81,68 @@
             ></textarea>
           </div>
 
-          <!-- Word 文档 -->
+          <!-- Word 文档编辑器 -->
           <div v-else-if="parsedContent.type === 'html'" class="word-editor">
             <div class="editor-toolbar">
-              <button class="btn btn-small" disabled title="只读预览">👁 预览模式</button>
+              <!-- 字体选择 -->
+              <select class="toolbar-select" @change="setFontFamily($event.target.value)" :value="currentFontFamily">
+                <option value="">字体</option>
+                <option value="SimSun">宋体</option>
+                <option value="SimHei">黑体</option>
+                <option value="KaiTi">楷体</option>
+                <option value="Microsoft YaHei">微软雅黑</option>
+                <option value="Arial">Arial</option>
+                <option value="Times New Roman">Times New Roman</option>
+              </select>
+              <!-- 字号选择 -->
+              <select class="toolbar-select" @change="setFontSize($event.target.value)" :value="currentFontSize">
+                <option value="">字号</option>
+                <option value="12">小五</option>
+                <option value="14">五号</option>
+                <option value="16">小四</option>
+                <option value="18">四号</option>
+                <option value="22">三号</option>
+                <option value="24">二号</option>
+                <option value="36">一号</option>
+              </select>
               <span class="separator">|</span>
-              <span class="toolbar-hint">Word 文档渲染预览</span>
+              <!-- 标题格式 -->
+              <select class="toolbar-select" @change="setHeading($event.target.value)" :value="currentHeading">
+                <option value="">正文</option>
+                <option value="1">标题 1</option>
+                <option value="2">标题 2</option>
+                <option value="3">标题 3</option>
+              </select>
+              <span class="separator">|</span>
+              <!-- 文字格式 -->
+              <button class="btn btn-small" @click="editor.chain().focus().toggleBold().run()" :class="{ active: editor?.isActive('bold') }" title="加粗"><b>B</b></button>
+              <button class="btn btn-small" @click="editor.chain().focus().toggleItalic().run()" :class="{ active: editor?.isActive('italic') }" title="斜体"><i>I</i></button>
+              <button class="btn btn-small" @click="editor.chain().focus().toggleUnderline().run()" :class="{ active: editor?.isActive('underline') }" title="下划线"><u>U</u></button>
+              <button class="btn btn-small" @click="editor.chain().focus().toggleStrike().run()" :class="{ active: editor?.isActive('strike') }" title="删除线"><s>S</s></button>
+              <span class="separator">|</span>
+              <!-- 颜色 -->
+              <input type="color" class="toolbar-color" @input="setTextColor($event.target.value)" title="文字颜色" />
+              <input type="color" class="toolbar-color" @input="setHighlightColor($event.target.value)" title="高亮颜色" />
+              <span class="separator">|</span>
+              <!-- 对齐 -->
+              <button class="btn btn-small" @click="editor.chain().focus().setTextAlign('left').run()" :class="{ active: editor?.isActive({ textAlign: 'left' }) }" title="左对齐">⬅</button>
+              <button class="btn btn-small" @click="editor.chain().focus().setTextAlign('center').run()" :class="{ active: editor?.isActive({ textAlign: 'center' }) }" title="居中">↔</button>
+              <button class="btn btn-small" @click="editor.chain().focus().setTextAlign('right').run()" :class="{ active: editor?.isActive({ textAlign: 'right' }) }" title="右对齐">➡</button>
+              <span class="separator">|</span>
+              <!-- 列表 -->
+              <button class="btn btn-small" @click="editor.chain().focus().toggleBulletList().run()" :class="{ active: editor?.isActive('bulletList') }" title="无序列表">•</button>
+              <button class="btn btn-small" @click="editor.chain().focus().toggleOrderedList().run()" :class="{ active: editor?.isActive('orderedList') }" title="有序列表">1.</button>
+              <span class="separator">|</span>
+              <!-- 撤销重做 -->
+              <button class="btn btn-small" @click="editor.chain().focus().undo().run()" title="撤销">↩</button>
+              <button class="btn btn-small" @click="editor.chain().focus().redo().run()" title="重做">↪</button>
+              <span class="separator">|</span>
+              <!-- 插入 -->
+              <button class="btn btn-small" @click="insertImage" title="插入图片">🖼</button>
+              <button class="btn btn-small" @click="insertTable" title="插入表格">⊞</button>
             </div>
             <div class="editor-scroll-area">
-              <div
-                class="editor-content docx-preview-content"
-                v-once
-                v-html="parsedContent.content"
-              ></div>
+              <editor-content :editor="editor" class="editor-content" />
             </div>
           </div>
 
@@ -156,21 +205,129 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useDocVault } from './composables/useDocVault'
+
+// TipTap 编辑器
+import { useEditor, EditorContent } from '@tiptap/vue-3'
+import StarterKit from '@tiptap/starter-kit'
+import Underline from '@tiptap/extension-underline'
+import TextAlign from '@tiptap/extension-text-align'
+import TextStyle from '@tiptap/extension-text-style'
+import Color from '@tiptap/extension-color'
+import Highlight from '@tiptap/extension-highlight'
+import Image from '@tiptap/extension-image'
+import Table from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableCell from '@tiptap/extension-table-cell'
+import TableHeader from '@tiptap/extension-table-header'
+import FontFamily from '@tiptap/extension-font-family'
 
 const { state, parsedContent, openFile, saveFile, convertToPdf, scanDir, formatSize, getFileIcon } = useDocVault()
 
 const textContent = ref('')
 const pdfBlobUrl = ref<string>('')
 
-// 监听 PDF 内容变化，创建 blob URL
+// 当前格式状态
+const currentFontFamily = ref('')
+const currentFontSize = ref('')
+const currentHeading = ref('')
+
+// TipTap 编辑器实例
+const editor = useEditor({
+  extensions: [
+    StarterKit,
+    Underline,
+    TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    TextStyle,
+    Color,
+    FontFamily,
+    Highlight.configure({ multicolor: true }),
+    Image,
+    Table.configure({ resizable: true }),
+    TableRow,
+    TableCell,
+    TableHeader,
+  ],
+  content: '',
+  onUpdate: ({ editor }) => {
+    // 同步更新 parsedContent
+    parsedContent.value = { type: 'html', content: editor.getHTML() }
+  },
+  onSelectionUpdate: ({ editor }) => {
+    // 更新当前格式状态
+    currentFontFamily.value = editor.getAttributes('textStyle').fontFamily || ''
+    currentFontSize.value = editor.getAttributes('textStyle').fontSize || ''
+    currentHeading.value = editor.isActive('heading') ? String(editor.getAttributes('heading').level) : ''
+  },
+})
+
+// 工具栏方法
+function setFontFamily(font: string) {
+  currentFontFamily.value = font
+  if (font) {
+    editor.value?.chain().focus().setFontFamily(font).run()
+  } else {
+    editor.value?.chain().focus().unsetFontFamily().run()
+  }
+}
+
+function setFontSize(size: string) {
+  currentFontSize.value = size
+  if (size) {
+    editor.value?.chain().focus().setFontSize(size + 'px').run()
+  } else {
+    editor.value?.chain().focus().unsetFontSize().run()
+  }
+}
+
+function setHeading(level: string) {
+  currentHeading.value = level
+  if (level) {
+    editor.value?.chain().focus().toggleHeading({ level: parseInt(level) as 1|2|3 }).run()
+  } else {
+    editor.value?.chain().focus().setParagraph().run()
+  }
+}
+
+function setTextColor(color: string) {
+  editor.value?.chain().focus().setColor(color).run()
+}
+
+function setHighlightColor(color: string) {
+  editor.value?.chain().focus().toggleHighlight({ color }).run()
+}
+
+function insertImage() {
+  const url = prompt('请输入图片URL:')
+  if (url) {
+    editor.value?.chain().focus().setImage({ src: url }).run()
+  }
+}
+
+function insertTable() {
+  editor.value?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+}
+
+// 监听 Word 内容变化，同步到编辑器
+watch(
+  () => parsedContent.value,
+  (content) => {
+    if (content.type === 'html' && editor.value) {
+      // 仅在内容不同时更新，避免循环
+      if (content.content !== editor.value.getHTML()) {
+        editor.value.commands.setContent(content.content)
+      }
+    }
+  }
+)
+
+// PDF blob URL 监听
 watch(
   () => parsedContent.value,
   (content) => {
     if (content.type === 'pdf' && content.content) {
-      // 创建 Blob URL
       const binaryString = atob(content.content)
       const bytes = new Uint8Array(binaryString.length)
       for (let i = 0; i < binaryString.length; i++) {
@@ -207,6 +364,10 @@ interface FileData {
 }
 
 onMounted(async () => {})
+
+onBeforeUnmount(() => {
+  editor.value?.destroy()
+})
 </script>
 
 <style scoped>
@@ -403,6 +564,39 @@ onMounted(async () => {})
   background: #f9fafb;
   flex-shrink: 0;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.toolbar-select {
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+  cursor: pointer;
+}
+
+.toolbar-select:hover {
+  border-color: #9ca3af;
+}
+
+.toolbar-color {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.toolbar-hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.btn.active {
+  background: #4361ee;
+  color: white;
 }
 
 .separator { color: #d1d5db; padding: 0 4px; }
@@ -424,6 +618,66 @@ onMounted(async () => {})
   outline: none;
   line-height: 1.8;
   color: #374151;
+}
+
+/* TipTap 编辑器样式 */
+.editor-content .ProseMirror {
+  outline: none;
+  min-height: 500px;
+}
+
+.editor-content .ProseMirror p {
+  margin: 0 0 10px 0;
+}
+
+.editor-content .ProseMirror h1 {
+  font-size: 2em;
+  font-weight: bold;
+  margin: 0.67em 0;
+}
+
+.editor-content .ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin: 0.75em 0;
+}
+
+.editor-content .ProseMirror h3 {
+  font-size: 1.17em;
+  font-weight: bold;
+  margin: 0.83em 0;
+}
+
+.editor-content .ProseMirror ul {
+  list-style: disc;
+  padding-left: 20px;
+}
+
+.editor-content .ProseMirror ol {
+  list-style: decimal;
+  padding-left: 20px;
+}
+
+.editor-content .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+}
+
+.editor-content .ProseMirror table td,
+.editor-content .ProseMirror table th {
+  border: 1px solid #d1d5db;
+  padding: 8px 12px;
+}
+
+.editor-content .ProseMirror table th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.editor-content .ProseMirror img {
+  max-width: 100%;
+  height: auto;
 }
 
 /* docx-preview 渲染内容样式 */
